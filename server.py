@@ -1,6 +1,10 @@
 import openai 
 import json
 
+import os
+from os.path import join,exists
+from datetime import datetime
+
 from telegram import ForceReply, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -10,6 +14,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
 
     user = update.effective_user
+    path=join('users',str(user.id))
+    os.makedirs(path,exist_ok=True)
+
+    if(not exists(join(path,'init.json'))):
+    	print('new user joined!')
+    	with open(join(path,'init.json'),'w') as f:
+    		json.dump({'name':user.name,'time':datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, f)
 
     await update.message.reply_html(
 
@@ -53,7 +64,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         }
     ]
     
-    response = openai.ChatCompletion.create(
+    response = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo",
         messages=messages,
         functions=functions,
@@ -85,7 +96,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             }
         )
         
-        second_response = openai.ChatCompletion.create(
+        second_response = await openai.ChatCompletion.acreate(
             model="gpt-3.5-turbo-0613",
             messages=messages,
         )
@@ -124,6 +135,7 @@ def tel_main(tel) -> None:
 
 
 if __name__ == "__main__":
+	print('started server')
 	with open('secrets') as f:
 		tel,ai=tuple(f.read().split('\n'))[:2]
 
