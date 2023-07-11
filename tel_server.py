@@ -30,6 +30,26 @@ async def send_message(bot,user_id,message):
     with open(join(path,'respond.json'), mode='w') as f:
         json.dump(d, f)
 
+async def gpt_response(bot,user_id,message):
+    await send_message(bot,user_id,message)
+
+async def gpt_reminder(bot,user_id,message):
+    await send_message(bot,user_id,message)
+
+async def gpt_delayed_reminder(bot,user_id,message):
+    await send_message(bot,user_id,'server error delayed response:\n'+message)
+
+
+async def log_update(user_id,update):
+    path=join('users',str(user_id))
+    with open(join(path,'init.json'),'r') as f:
+        user_info = json.load(f)
+    chat_id=user_info['chat_id']
+    
+    t=datetime.now().strftime('%Y-%m-%d %H:%M:%S')+'.json'
+
+    with open(join(path,'recived_messages',t), 'w') as f:
+            json.dump({'chat_id': chat_id, 'message': update.message.text}, f) 
 
 class WaitingToCheckOnUser:
     def __init__(self, bot,user_id, message, delay):
@@ -45,14 +65,16 @@ class WaitingToCheckOnUser:
 
     async def run(self):
         await asyncio.sleep(self.delay)
-        await send_message(self.bot,self.user_id, self.message)
+        await gpt_reminder(self.bot,self.user_id, self.message)
+        os.remove(self.path)
         #with open(self.path, 'w') as f:
          #   json.dump({'chat_id': self.chat_id, 'message': self.message, 'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, f)
         
 
     def cancel(self):
-        self.task.cancel()
-        os.remove(self.path)
+        if not self.task.done():
+            self.task.cancel()
+            os.remove(self.path)
 
 
 async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -65,11 +87,14 @@ async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except KeyError:
         pass
 
+    asyncio.create_task(log_update(user.id,update))
     response_text='got message'#await gpt_logic(update)
-    await send_message(context.bot,user.id,response_text)
+    await gpt_response(context.bot,user.id,response_text)
 
     w=WaitingToCheckOnUser(context.bot,user.id,'wait event trihggered',10)
     user_threads[user.id]=w
+
+    #await w.task
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -84,9 +109,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             json.dump({'name':user.name,'time':datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, f)
         
         os.makedirs(join(path,'send_messages'))
+        os.makedirs(join(path,'recived_messages'))
 
         with open(join(path,'respond.json'),'w') as f:
-            json.dump({'name':user.name,'message':'server issue','delay':10}, f)
+            json.dump({'time':None,'delay':10}, f)
         
     # Update chat_id
     with open(join(path,'init.json'),'r') as f:
@@ -115,15 +141,8 @@ async def initialize_tasks(application):
                 w = WaitingToCheckOnUser(bot, user_dir, respond_info['message'], delay)
                 user_threads[int(user_dir)] = w
             else:
-                await send_message(bot, user_dir, 'server error delayed response:'+respond_info['message'])
+                asyncio.create_task(gpt_delayed_reminder(bot, user_dir, respond_info['message']))
         
-        else:
-            with open(join(path, 'respond.json'), 'r') as f:
-                respond_info = json.load(f)
-            delay = respond_info['delay']
-            if delay > 0:
-                w = WaitingToCheckOnUser(bot, user_dir, respond_info['message'], delay)
-                user_threads[int(user_dir)] = w
     print('resolved callbacks. runing as usual')
 
 
