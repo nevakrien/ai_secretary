@@ -12,6 +12,7 @@ httpcore==0.17.3
 httpx==0.24.1
 idna==3.4
 multidict==6.0.4
+numpy==1.25.1
 openai==0.27.8
 python-telegram-bot==20.4
 requests==2.31.0

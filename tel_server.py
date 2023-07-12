@@ -8,7 +8,6 @@ from datetime import datetime
 from telegram import ForceReply, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-import threading
 import asyncio
 
 
