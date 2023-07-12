@@ -55,17 +55,21 @@ class memory():
         np.save(save_path, {'text': text, 'key': get_embedings(text),'importance': importance,
         	'time':datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
 
-    def search(self, place, depth=-1, date_range=None, importance_threshold=None):
+    def search(self, place, depth=-1, date_range=None, importance_threshold=None, keyword=None, only_created=False):
         path = join(self.path, place)
         assert exists(path)
-        return self._recursive_search(path, depth, date_range, importance_threshold)
+        return self._recursive_search(path, depth, date_range, importance_threshold, keyword, only_created)
 
-    def _recursive_search(self, path, depth, date_range, importance_threshold):
+    def _recursive_search(self, path, depth, date_range, importance_threshold, keyword, only_created):
         results = []
         if depth == 0:
             return results
         for entry in os.scandir(path):
             if entry.is_file() and entry.name.endswith('.npy'):
+                if only_created and entry.name != 'created.npy':
+                    continue
+                if keyword and keyword not in entry.name:
+                    continue
                 data = np.load(entry.path, allow_pickle=True).item()  # convert numpy array to Python dict
                 mem_date = datetime.strptime(data['time'], '%Y-%m-%d %H:%M:%S')
                 mem_importance = data['importance']
@@ -77,9 +81,9 @@ class memory():
                 if importance_threshold:
                     if mem_importance < importance_threshold:
                         continue
-                results.append(data)
+                results.append((os.path.dirname(entry.path), entry.name, data))
             elif entry.is_dir():
-                results.extend(self._recursive_search(entry.path, depth - 1, date_range, importance_threshold))
+                results.extend(self._recursive_search(entry.path, depth - 1, date_range, importance_threshold, keyword, only_created))
         return results
 
     def change_importance(self, heading: str,importance :Union[int,float], place='history'):
@@ -102,20 +106,28 @@ class memory():
         assert '.' not in path #this makes sure the ai dosent access the external file system
         assert not path in self.get_base_folders() 
         rmtree(path)
-            
+      
+if __name__ == '__main__':
+    if exists('lol'):
+    	rmtree('lol')
 
-if exists('lol'):
-	rmtree('lol')
+    x=memory.make_new('lol')
+    x.add_folder('dirr','discribing this folder')
+    x.add_memory('mem','first',1)
+    x.add_memory('mem','i added u',10,place=join('history','dirr'))
+    memory('lol').change_importance('mem',2,place=join('history','dirr'))
+    print(memory('lol').search('history',2,importance_threshold=2))
 
-x=memory.make_new('lol')
-x.add_folder('dirr','discribing this folder')
-x.add_memory('mem','first',1)
-x.add_memory('mem','i added u',10,place=join('history','dirr'))
-memory('lol').change_importance('mem',2,place=join('history','dirr'))
-print(memory('lol').search('history',3,importance_threshold=2))
+    print('\n\n\n')
+    x.add_memory('mem2','first',1)
+    x.add_memory('stuff','first',1)
+    x.remove_memory('mem', place=join('history','dirr'))
+    x.remove_folder('dirr', 'history')
+    x.add_folder('check','discribing this folder',place="")
+    print(memory('lol').search('history', 1,keyword='mem'))
 
-print('\n\n\n')
+    print('\n\n\n')
 
-x.remove_memory('mem', place=join('history','dirr'))
-x.remove_folder('dirr', 'history')
-print(memory('lol').search('history', 1))
+    x.add_folder('check 2', 'history')
+    x.add_folder('check','discribing this folder',place="")
+    print(memory('lol').search('', 2,only_created=True,))
