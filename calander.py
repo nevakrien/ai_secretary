@@ -6,7 +6,7 @@ import time
 
 from typing import Optional, Dict
 
-from utills import write_int_to_file,read_int_from_file,read_last_line
+from utills import write_int_to_file,read_int_from_file,read_last_line, max_co_occur
 
 s_in_d=60*60*24
 
@@ -56,18 +56,33 @@ class Calander():
         assert end-start<=s_in_d
         return start,end,name
     
+    def capacity_check(self,start:int,end:int,interval:int):
+        check=self.range_search(start-interval,end+interval)
+        if not check:
+            return 0
+        check=[(x['start'],x['end']) for x in check]
+        return max_co_occur(check,interval)
+
     def add(self,d:dict):
         idx=self.get_count()
         start,end,name=self.verify_and_unload(d)
 
-        
+        hour_capacity=self.capacity_check(start,end,60*60)
+        day_capacity=self.capacity_check(start,end,s_in_d) 
+
+        assert day_capacity<self.day_limit
+        assert hour_capacity<self.hour_limit
+
         path=self._get_folder_path(start)
-        os.makedirs(path)
+        if not exists(path):
+            os.makedirs(path)
         with open(join(path,f'event_{idx}.json'),'w') as f:
             json.dump(d,f)
 
         self.log_history(idx,d)
         self._increment_count()
+
+        return {'day':day_capacity,'hour':hour_capacity}
       
 
     def modify(self,idx:int,start_time :int,d:Optional[Dict] = None):
@@ -86,6 +101,7 @@ class Calander():
 
         self.log_history(idx,d)
 
+
         
     def log_history(self,idx:int,d:Optional[Dict] = None):
         '''
@@ -99,13 +115,27 @@ class Calander():
         assert start<end
         
         ans=[]
-        for i in range(start,end,s_in_d):
+        for i in range((start//s_in_d)*s_in_d,end,s_in_d):
+            #print(i)
             path=self._get_parent_folder(i)
             if not exists(path):
                 continue
             for x in os.listdir(path):
                 if start<=int(x)<=end: 
                     ans.extend([join(path,x,s) for s in os.listdir(join(path,x))])
+        return ans
+
+    def range_search(self,start:int,end:int):
+        
+        ans=[]
+        for s in self.search_events_start(start-s_in_d,start-1):
+            with open(s) as f:
+                x=json.load(f)
+                if start<x['end']:
+                    ans.append(x) 
+        for s in self.search_events_start(start,end):
+            with open(s) as f:
+                    ans.append(json.load(f)) 
         return ans
 
 
@@ -131,7 +161,7 @@ if __name__=='__main__':
     c.add({'start':t,'end':t+5,'name':'next 5 seconds'}) 
 
     print('found:')
-    print(c.search_events_start(0,50000000))
+    print(c.search_events_start(0,s_in_d*365*20))
     try: 
         c.add({'start':t,'end':0,'name':'event name'})
         raise ValueError
@@ -144,5 +174,28 @@ if __name__=='__main__':
     except: 
         pass
     
-    #c.modify(0,1,None)
+    c.modify(0,1,None)
     print(c.get_last(1))
+    print('range test')
+
+    c.add({'start':-10,'end':27,'name':'event name'})
+    c.add({'start':1,'end':27,'name':'event name'})
+    c.add({'start':20,'end':21,'name':'event name'})
+    c.add({'start':1,'end':27,'name':'event name'})
+    c.add({'start':28,'end':30,'name':'event name'})
+
+    print(c.range_search(5,10))
+
+    try:
+        c=Calander('cal_data',hour_limit=1)
+        c.add({'start':1,'end':27,'name':'event name'})
+        raise ValueError 
+    except:
+         c=Calander('cal_data')
+
+    #print('\n'*20)
+    print (c.capacity_check(0,100,1))
+    print (c.capacity_check(0,100,100))
+
+    print(c.add({'start':1,'end':27,'name':'event name'}))
+

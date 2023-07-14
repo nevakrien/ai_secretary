@@ -20,3 +20,15 @@ def read_last_line(filename):
             last_line = ''
     return last_line
 
+def max_co_occur(events,interval:int):
+    assert interval>0 
+
+    ans=0
+    cur=[events[0]]
+    
+    for e in events[1:]:
+        #right=e[0]
+        cur=[x for x in cur if e[0]-x[1]<interval]
+        cur.append(e)
+        ans=max(ans,len(cur))
+    return ans
