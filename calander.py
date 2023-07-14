@@ -8,7 +8,7 @@ from typing import Optional, Dict
 
 from utills import write_int_to_file,read_int_from_file,read_last_line
 
-
+s_in_d=60*60*24
 
 class Calander():
     def __init__(self,path,new=False,hour_limit=100,day_limit=1000):
@@ -26,9 +26,14 @@ class Calander():
         self.hour_limit=hour_limit 
         self.day_limit=day_limit
 
-    def _get_folder_path(self, time_key: int, current: bool = False) -> str:
-        time_key=datetime.fromtimestamp(time_key)
-        return os.path.join(self.curent,time_key.strftime('%Y/%m/%d/%s'))
+    def _get_parent_folder(self, time_key: int) -> str:
+        x=time_key//s_in_d
+        x=x*s_in_d
+        return join(self.curent,f'{x}_{x+s_in_d-1}')
+
+    def _get_folder_path(self, time_key: int) -> str:
+        return join(self._get_parent_folder(time_key),str(time_key))
+
 
     def get_count(self):
         return read_int_from_file(self.idx_file) 
@@ -48,7 +53,7 @@ class Calander():
         name=d['name']
         assert type(name)==str
         assert start<end 
-        assert end-start<=60*60*24
+        assert end-start<=s_in_d
         return start,end,name
     
     def add(self,d:dict):
@@ -91,56 +96,17 @@ class Calander():
             f.write('\n'+json.dumps(d))
 
     def search_events_start(self,start:int,end:int):
-        #this is has weird timezone bugs in edge cases
         assert start<end
-        start_date=datetime.fromtimestamp(start)
-        end_date=datetime.fromtimestamp(end)
-
-        ans=[] 
-
-        #big chunk of range checks
-        for year in range(start_date.year,end_date.year+1):
-            if year==start_date.year:
-                start_month=start_date.month
-            else:
-                start_month=1
-
-            if year==end_date.year:
-                end_month=end_date.month
-            else:
-                end_month=12
-
-            for month in range(start_month,end_month+1):
-                if year==start_date.year and month==start_date.month:
-                    start_day=start_date.day
-                else:
-                    start_day=1
-
-                if year==end_date.year and month==end_date.month:
-                    end_day=end_date.day
-                else:
-                    end_day=31
-
-                for day in range(start_day,end_day+1):
-                    #print(f'{year}-{month}-{day}')
-                    m=str(month)
-                    if(len(m)==1):
-                        m=f'0{m}'
-                    d=str(day)
-                    if(len(d)==1):
-                        d=f'0{d}'
-                    path=join(self.curent,str(year),m,d)
-                    if not exists(path):
-                        continue
-                    for unix in os.listdir(path):
-                        if start<=int(unix)<=end:
-                            ans.extend(os.listdir(join(path,unix)))
+        
+        ans=[]
+        for i in range(start,end,s_in_d):
+            path=self._get_parent_folder(i)
+            if not exists(path):
+                continue
+            for x in os.listdir(path):
+                if start<=int(x)<=end: 
+                    ans.extend([join(path,x,s) for s in os.listdir(join(path,x))])
         return ans
-
-
-
-
-
 
 
 
