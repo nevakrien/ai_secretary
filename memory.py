@@ -108,22 +108,44 @@ class memory():
                 results.extend(self._recursive_search(entry.path, depth - 1, date_range, importance_threshold, keyword, only_created))
         return results
 
-    def search(self, place, depth=-1, date_range=None, importance_threshold=None, keyword=None, only_created=False, fields=('text',)):
+    def search(self, place, depth=-1, date_range=None, importance_threshold=None, keyword=None, only_created=False, fields=('text'), ranking_function=lambda data: data['importance'], max_text_len=1000):
         raw_results = self._search(place, depth, date_range, importance_threshold, keyword, only_created)
+
+        # Sort results based on ranking function
+        raw_results.sort(key=lambda x: ranking_function(x[2]), reverse=True)
+
         tree = {}
-        data = []
+        total_len = 0
+
+        def add_to_tree(path_parts, filename, contents, total_len):
+            cursor = tree
+            new_len = 0
+            for part in path_parts:
+                if part not in cursor:
+                    cursor[part] = {}
+                    new_len += len(part) + 1  # add 1 for the ':' or '/' character
+                cursor = cursor[part]
+
+            # Check if the new length will exceed the limit
+            info = {field: contents[field] for field in fields if field in contents}
+            info_len = sum(len(str(val)) for val in info.values())
+            name_len = len(filename)
+            new_len += name_len + info_len + 1  # add 1 for the ':' character
+
+            if total_len + new_len > max_text_len:
+                return total_len, False
+
+            cursor[filename] = info
+            return total_len + new_len, True
 
         for dirpath, filename, contents in raw_results:
             relative_path = os.path.relpath(dirpath, self.path)
             path_parts = relative_path.split(os.path.sep)
-            cursor = tree
-            for part in path_parts:
-                if part not in cursor:
-                    cursor[part] = {}
-                cursor = cursor[part]
-            info = {field: contents[field] for field in fields}
-            cursor[filename] = info
-            data.append((dirpath, filename, info))
+
+            # Try to add to the tree and update total_len
+            total_len, added = add_to_tree(path_parts, filename, contents, total_len)
+            if not added:
+                break
 
         def pretty_print_tree(tree_dict, indent=''):
             lines = []
@@ -136,7 +158,9 @@ class memory():
             return lines
 
         lines = pretty_print_tree(tree)
-        return '\n'.join(lines), data
+        return '\n'.join(lines)
+
+
 
      
 if __name__ == '__main__':
@@ -162,6 +186,6 @@ if __name__ == '__main__':
 
     x.add_folder('check 2', 'history')
     x.add_folder('check','discribing this folder',place="")
-    tree,data=memory('lol').search('', -1,only_created=True,)
+    tree=memory('lol').search('', -1,only_created=True,max_text_len=100,fields=('text',))
     print(tree)
-    print(data)
+    #print(data)

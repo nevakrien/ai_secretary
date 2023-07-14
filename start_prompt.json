@@ -1,0 +1,94 @@
+{
+    "functions": [
+        
+        {
+            "name": "add_memory",
+            "description": "Add a memory to a specific location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_heading": {"type": "string"},
+                    "memory_text": {"type": "string"},
+                    "importance_score": {"type": "number"},
+                    "location": {"type": "string"}
+                },
+                "required": ["memory_heading", "memory_text"]
+            }
+        },
+        {
+            "name": "add_folder",
+            "description": "Add a new folder to the memory directory",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "folder_name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "location": {"type": "string"}
+                },
+                "required": ["folder_name"]
+            }
+        },
+        {
+            "name": "change_importance",
+            "description": "Change the importance score of a specific memory",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_heading": {"type": "string"},
+                    "new_importance_score": {"type": "number"},
+                    "location": {"type": "string"}
+                },
+                "required": ["memory_heading", "new_importance_score"]
+            }
+        },
+        {
+            "name": "remove_memory",
+            "description": "Remove a specific memory from a location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_heading": {"type": "string"},
+                    "location": {"type": "string"}
+                },
+                "required": ["memory_heading"]
+            }
+        },
+        {
+            "name": "remove_folder",
+            "description": "Remove a specific folder and its content",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "folder_name": {"type": "string"},
+                    "location": {"type": "string"}
+                },
+                "required": ["folder_name"]
+            }
+        },
+        {
+            "name": "search",
+            "description": "Search for memories based on various parameters",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string"},
+                    "depth": {"type": "number"},
+                    "date_range": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "importance_threshold": {"type": "number"},
+                    "keyword": {"type": "string"},
+                    "only_created": {"type": "boolean"},
+                    "fields": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    },
+                    "ranking_function": {"type": "function"},
+                    "max_text_len": {"type": "number"}
+                },
+                "required": ["location"]
+            }
+        }
+    ]
+}
