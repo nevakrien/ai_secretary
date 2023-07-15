@@ -1,5 +1,6 @@
 import os
 import io
+import numpy as np
 
 def write_int_to_file(filename, number):
     with open(filename, "wb") as f:
@@ -22,7 +23,8 @@ def read_last_line(filename):
 
 def max_co_occur(events,interval:int):
     assert interval>0 
-
+    events=np.array(events)
+    events=events[np.argsort(events[:,0])]
     ans=0
     cur=[events[0]]
     
