@@ -57,7 +57,9 @@ class MemoryFolder():
         takes in an event index and the curent state of that event and modifys in the change
         if the event is new it will be created
         '''
-        
+        if d==None:
+            d={}
+        d['change history time']=time.time()
         with open(join(self.history,f'event_{idx}.jsonl'),'a') as f:
             f.write('\n'+json.dumps(d)) 
 
@@ -71,6 +73,7 @@ class MemoryFolder():
             json.dump(d,f)
         self.log_history(idx,d)
         self._increment_count()
+        return idx
 
     def _modify(self,idx:int,d:Optional[Union[Dict,None]] = None):
         self.verify_log(d)
@@ -82,6 +85,28 @@ class MemoryFolder():
                 json.dump(d,f)
         
         self.log_history(idx,d)
+
+    def __getitem__(self,idx:int):
+        path=join(self.history,f'event_{idx}.jsonl')
+        d=json.loads(read_last_line(path)) 
+        d['existed']=time.time()-getctime(path)
+        d['path']=path
+        return d
+
+    def modify(self,idx:int,text=None,importance=None,view=False):
+        d=self[idx] 
+        if text!=None:
+            d['text']=text
+        if importance!=None:
+            d['importance']=importance
+        if view:
+            d['viewed']+=1
+        d.update(d)
+        d.pop('change history time')
+        self._modify(idx,d)
+
+    def remove(self,idx:int):
+        self._modify(idx)
 
     def get_all(self):
         ans=[]
@@ -111,3 +136,18 @@ if __name__=='__main__':
     #print(a.get_all())
     a.prune()
     print(a.get_all())
+    a.add('get me',3)
+    #a.add('get me',3)
+    print(a[5])
+    print('\n')
+    
+    try: 
+        a.modify(3,'modified')
+        raise ValueError 
+    except:
+        pass
+    print(a[3])
+    a.modify(5,'modified',view=True)
+    print(a[5])
+    a.remove(5)
+    print(a[5])
