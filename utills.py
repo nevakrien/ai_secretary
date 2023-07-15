@@ -34,3 +34,9 @@ def max_co_occur(events,interval:int):
         cur.append(e)
         ans=max(ans,len(cur))
     return ans
+
+def min_max_scale(x):
+    x=np.array(x)
+    x-=x.min(0)
+    x/=x.max(0)
+    return x.mean(1)

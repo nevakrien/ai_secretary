@@ -50,14 +50,15 @@ class DiskHash():
         return self.d[key]
 
 class Lazy_embed():
-    def __init__(self,folder='embeddings'):
+    def __init__(self,folder='embeddings',func=get_embedings):
         self.d=DiskHash(folder)
+        self.func=func
 
     def __call__(self,x):
         try:
             return self.d[x]
         except KeyError:
-            y=get_embedings(x)
+            y=self.func(x)
             self.d[x]=y
             return y
 

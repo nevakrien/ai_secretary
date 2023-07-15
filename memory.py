@@ -6,15 +6,16 @@ import time
 
 from typing import Optional, Dict ,Union
 
-from utills import write_int_to_file,read_int_from_file,read_last_line 
+from utills import write_int_to_file,read_int_from_file,read_last_line ,min_max_scale
 
 class MemoryFolder():
-    def __init__(self,path,cap=100,new=False):
+    def __init__(self,path,cap=100,new=False,relevance_time=60*60):
         
         self.history=join(path,'history')
         self.curent=join(path,'curent')
         self.idx_file=join(path,'idx')
         self.cap=cap
+        self.relevance_time=relevance_time
         
         if new:
             os.mkdir(path)
@@ -40,42 +41,15 @@ class MemoryFolder():
         for k in ('text','importance','viewed'):
             assert k in d.keys()
 
-
-    def scores(self):
-        
-        relevance={}
-        importance={} 
-        fresh={}
-        entries=tuple(join(self.curent,j) for j in os.listdir(self.curent))
-
-        for path in entries:
-            t=time.time()-getctime(path)
-            with open(path) as f:
-                d=json.load(f)
-                #print(d)
-            fresh[path]=t
-            relevance[path]=d['viewed']/t
-            importance[path]=d['importance'] 
-
-        relevance=sorted(entries,key=lambda k:relevance[k])
-        importance=sorted(entries,key=lambda k:importance[k])
-        fresh=sorted(entries,key=lambda k:fresh[k],reverse=True) 
-
-        scores={k:[None,None,None] for k in entries}
-
-        for i,x in enumerate(relevance):
-            scores[x][0]=i
-        for i,x in enumerate(importance):
-            scores[x][1]=i 
-        for i,x in enumerate(fresh):
-            scores[x][2]=i 
-
-        return scores
+    def scores(self,d):
+        return [d['viewed']/(d['existed']+self.relevance_time),d['existed'],d['importance']]
 
     def prune(self):
-        scores=self.scores()
-        bad=min(scores.keys(),key=lambda k:scores[k])
-        idx=int(bad[:-6].split('_')[-1])
+        entries=self.get_all()
+        scores=[self.scores(d) for d in entries]
+        scores=min_max_scale(scores)
+        bad=entries[scores.argmin()]['path']
+        idx=int(bad[:-6].split('_')[-1]) #'.jsonl' is 6 charchters and its junk_event_idx.jsonl
         self._modify(idx)
 
     def log_history(self,idx:int,d:Optional[Union[Dict,None]] = None):
@@ -112,8 +86,12 @@ class MemoryFolder():
     def get_all(self):
         ans=[]
         for j in os.listdir(self.curent):
-            with open(join(self.curent,j)) as f:
-                ans.append(json.load(f))
+            path=join(self.curent,j)
+            with open(path) as f:
+                d=json.load(f)
+                d['existed']=time.time()-getctime(path)
+                d['path']=path
+                ans.append(d)
         return ans
 
 if __name__=='__main__':
@@ -122,6 +100,7 @@ if __name__=='__main__':
         rmtree('mem_data')
     
     a=MemoryFolder('mem_data',cap=3,new=True)
+    #a.scores=lambda x: [0.]
     a.add('hey')
     a.add('yo')
     a.add('I am me',3)
@@ -129,5 +108,6 @@ if __name__=='__main__':
     a.add('bad2',0)
     a._modify(1,{'text':'yes','importance':3,'viewed':1})
     a._modify(0,None)
+    #print(a.get_all())
     a.prune()
     print(a.get_all())
