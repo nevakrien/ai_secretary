@@ -5,4 +5,5 @@ venv/
 users/ 
 lol/
 cal_data/
-lol_hash/
+lol_hash/ 
+embeddings/

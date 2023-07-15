@@ -50,7 +50,7 @@ class DiskHash():
         return self.d[key]
 
 class Lazy_embed():
-    def __init__(self,folder='embeding'):
+    def __init__(self,folder='embeddings'):
         self.d=DiskHash(folder)
 
     def __call__(self,x):
