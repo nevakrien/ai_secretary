@@ -6,4 +6,5 @@ users/
 lol/
 cal_data/
 lol_hash/ 
-embeddings/
+embeddings/ 
+sketch/
