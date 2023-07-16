@@ -8,6 +8,7 @@ from os.path import join,exists
 class Bot():
 	def __init__(self,path,new=False):
 		self.path=path 
+		
 		if new:
 			os.makedirs(path)
 		self.cal=Calander(join(path,'calander'),new=new)
@@ -38,6 +39,7 @@ if __name__=='__main__':
 	    rmtree('bot_sketch')
 	
 	Bot.init_debug_embed('lol_hash')
+	#Bot.init_embed("text-embedding-ada-002")
 	bot=Bot('bot_sketch',new=True)
 
 	print(un_async(bot.embed('hi')))
