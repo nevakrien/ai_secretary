@@ -157,6 +157,8 @@ class Responder():
                     self.user_threads[int(user_dir)] = w
                 else:
                     asyncio.create_task(self.wrapped_errored_reminder(bot, user_dir, respond_info['message']))
+            else: 
+                print(f'error missing response in:\n{path}')
             
         print('resolved callbacks. runing as usual')
 
@@ -259,13 +261,17 @@ if __name__ == "__main__":
         conv=Conversation_Manager.from_id(user_id,bot)
         
         m= conv.done_gathering()
-        await conv.send_message(f'reminder:\n{m}')
+        if m:
+            notes+=m
+        await conv.send_message(f'reminder:\n{notes}')
 
     async def errored_reminder(bot,user_id,notes:str):
         conv=Conversation_Manager.from_id(user_id,bot)
         
         m= conv.done_gathering()
-        await conv.send_message(f'server error delayed response:\n{m}')
+        if m:
+            notes+=m
+        await conv.send_message(f'server error delayed response:\n{notes}')
 
         #await send_message(bot,user_id,'server error delayed response:\n'+notes) 
 
