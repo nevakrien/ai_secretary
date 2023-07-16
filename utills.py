@@ -1,6 +1,8 @@
 import os
 import io
-import numpy as np
+import numpy as np 
+
+import asyncio
 
 def write_int_to_file(filename, number):
     with open(filename, "wb") as f:
@@ -39,4 +41,8 @@ def min_max_scale(x):
     x=np.array(x)
     x-=x.min(0)
     x/=x.max(0)
-    return x.mean(1)
+    return x.mean(1) 
+
+def un_async(func):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(func)

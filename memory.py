@@ -40,7 +40,9 @@ class MemoryFolder():
             return 
         for k in ('text','importance','viewed'):
             assert k in d.keys()
-
+    @staticmethod
+    def idx_from_path(path):
+        return int(path[:-6].split('_')[-1]) #'.jsonl' is 6 charchters and its junk_event_idx.jsonl
     def scores(self,d):
         return [d['viewed']/(d['existed']+self.relevance_time),d['existed'],d['importance']]
 
@@ -49,7 +51,7 @@ class MemoryFolder():
         scores=[self.scores(d) for d in entries]
         scores=min_max_scale(scores)
         bad=entries[scores.argmin()]['path']
-        idx=int(bad[:-6].split('_')[-1]) #'.jsonl' is 6 charchters and its junk_event_idx.jsonl
+        idx=self.idx_from_path(bad) 
         self._modify(idx)
 
     def log_history(self,idx:int,d:Optional[Union[Dict,None]] = None):
@@ -86,15 +88,31 @@ class MemoryFolder():
         
         self.log_history(idx,d)
 
+    def get(self,idx:int):
+        path=join(self.curent,f'event_{idx}.jsonl')
+        
+        with open(path) as f:
+            d=json.load(f)
+
+        return d
+    
     def __getitem__(self,idx:int):
-        path=join(self.history,f'event_{idx}.jsonl')
-        d=json.loads(read_last_line(path)) 
+        path=join(self.curent,f'event_{idx}.jsonl')
+        
+        if exists(path): 
+            with open(path) as f:
+                d=json.load(f)
+        else:
+            path=join(self.history,f'event_{idx}.jsonl')
+            d=json.loads(read_last_line(path)) 
+
         d['existed']=time.time()-getctime(path)
         d['path']=path
         return d
 
     def modify(self,idx:int,text=None,importance=None,view=False):
-        d=self[idx] 
+        d=self.get(idx)
+
         if text!=None:
             d['text']=text
         if importance!=None:
@@ -102,7 +120,7 @@ class MemoryFolder():
         if view:
             d['viewed']+=1
         d.update(d)
-        d.pop('change history time')
+
         self._modify(idx,d)
 
     def remove(self,idx:int):
@@ -131,6 +149,7 @@ if __name__=='__main__':
     a.add('I am me',3)
     a.add('bad',0)
     a.add('bad2',0)
+    a=MemoryFolder('mem_data')
     a._modify(1,{'text':'yes','importance':3,'viewed':1})
     a._modify(0,None)
     #print(a.get_all())

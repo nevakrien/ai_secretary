@@ -6,7 +6,7 @@ from os.path import exists,join
 import numpy as np
 
 #this is a tester function that would be an api call
-def get_embedings(input_string, vector_length=7):
+async def get_embedings(input_string, vector_length=7):
     hash_object = hashlib.sha256(input_string.encode())
     hex_dig = hash_object.hexdigest()
     seed = int(hex_dig, 16) % (2**32 - 1)  # Convert to integer first, then apply modulo
@@ -54,20 +54,21 @@ class Lazy_embed():
         self.d=DiskHash(folder)
         self.func=func
 
-    def __call__(self,x):
+    async def __call__(self,x):
         try:
             return self.d[x]
         except KeyError:
-            y=self.func(x)
+            y=await self.func(x)
             self.d[x]=y
             return y
 
 if __name__ == '__main__':
+    from utills import un_async
     print(DiskHash('lol_hash').hash('yass'))
     d=DiskHash('lol_hash')
-    d['yes']=get_embedings('yes')
+    d['yes']= un_async(get_embedings('yes'))
     print(d['yes'])
     print(DiskHash('lol_hash')['yes'])
 
     emb=Lazy_embed('lol_hash')
-    print(emb('five'))
+    print(un_async(emb('five')))
