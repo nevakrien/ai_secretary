@@ -67,6 +67,7 @@ class WaitingFunctionCall:
         await asyncio.sleep(self.delay)
         await self.func(self.bot,self.user_id, self.message)
         os.remove(self.path)
+        #return val
         #with open(self.path, 'w') as f:
          #   json.dump({'chat_id': self.chat_id, 'message': self.message, 'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, f)
         
@@ -164,16 +165,18 @@ class Conversation_Manager():
     #when using this u can just overide the process message method
     convs={} 
 
-    def __init__(self,path:str,bot,buffer_time=3.5):
+    def __init__(self,path:str,bot,buffer_time=1.3):
         with open(join(path,'init.json'),'r') as f:
             user_info = json.load(f)
         self.chat_id=user_info['chat_id']
         self.bot=bot
         
         self.path=path
-        self.mem_path=join(path,'scedualed_respond.json')
-        self.mem=None
+        self.save_path=join(path,'texting.txt')
+        #self.mem_path=join(path,'scedualed_respond.json')
         self.buffer_time=buffer_time
+      
+        self.task=asyncio.create_task(asyncio.sleep(0))
 
     @classmethod  
     def from_id(cls,idx,bot):
@@ -184,6 +187,10 @@ class Conversation_Manager():
             ans=cls(path,bot)
             cls.convs[idx]=ans 
             return ans
+ 
+    async def hook(self,message,path):
+        await self.send_message(f'we got:\n{message}')
+
 
     async def send_message(self,message):
         t=datetime.now().strftime('%Y-%m-%d %H:%M:%S')+'.json'
@@ -191,27 +198,34 @@ class Conversation_Manager():
         with open(join(self.path,'send_messages',t), 'w') as f:
                 json.dump({'chat_id': self.chat_id, 'message': message}, f)
 
-    async def response(self,message):
-        if self.mem==None:
-            self.mem=message
-        else:
-            self.mem+='\n\n'+message 
+    async def add(self,message):
+        self.task.cancel()
+        with open(join(self.path,'texting.txt'),'a') as f:
+            f.write(message+'\n\n')
+        self.task=asyncio.create_task(self.resolve_messages())
 
-        try:
-            delay=getctime(self.mem_path)+self.buffer_time-time.time()
-        except FileNotFoundError:
-            delay=self.buffer_time
 
-        return delay,self.mem
+    def done_gathering(self):
+        
+        if not exists(self.save_path):
+            return None 
 
-    async def done_gathering(self,message):
-        self.mem=None 
-        #print(f'sending: {message}')
-        response_message=await self.process_message(message)
-        await self.send_message(response_message)
+        with open(self.save_path) as f:
+            message=f.read()
 
-    async def process_message(self,message):
-        return f'we got:\n{message}'
+        os.remove(self.save_path)
+
+        return message
+
+    async def resolve_messages(self):
+        #print('started')
+        await asyncio.sleep(self.buffer_time) 
+        await self.hook(self.done_gathering(),self.path)
+        #print('done')
+
+
+
+
 
 
 def tel_main(tel,response,reminder,errored_reminder,start) -> None:
@@ -236,19 +250,23 @@ if __name__ == "__main__":
     async def response(bot,user_id,message):
         #print(bot)
         conv=Conversation_Manager.from_id(user_id,bot)
-        return await conv.response(message)
-        #await send_message(bot,user_id,f'got message: {message}')
-        #return 10,'wait event trihggered'
+        
+        await conv.add(message)
+
+        return 10,'wait event trihggered'
 
     async def reminder(bot,user_id,notes:str):
         conv=Conversation_Manager.from_id(user_id,bot)
         
-        await conv.done_gathering(notes)
+        m= conv.done_gathering()
+        await conv.send_message(f'reminder:\n{m}')
 
     async def errored_reminder(bot,user_id,notes:str):
         conv=Conversation_Manager.from_id(user_id,bot)
         
-        await conv.done_gathering('server error delayed response:\n'+notes)
+        m= conv.done_gathering()
+        await conv.send_message(f'server error delayed response:\n{m}')
+
         #await send_message(bot,user_id,'server error delayed response:\n'+notes) 
 
     async def start(bot,user_id,user):
