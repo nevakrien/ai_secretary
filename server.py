@@ -22,6 +22,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 import asyncio
 
+from calander import s_in_d
+
 
 async def send_message(bot,user_id,message):
     #sends and logs a message
@@ -49,10 +51,13 @@ async def log_update(user_id,update):
     with open(join(path,'recived_messages',t), 'w') as f:
             json.dump({'chat_id': chat_id, 'message': update.message.text}, f) 
 
-class WaitingFunctionCall:
+class FolowUpCalls:
+    @classmethod
+    def set_func(cls,func):
+        cls.func=[func]
     #this is here so that scedualed responses work even after a server restart
-    def __init__(self,func, bot,user_id, message, delay):
-        self.func=func
+    def __init__(self, bot,user_id, message, delay):
+        #self.func=func
         self.bot = bot
         self.user_id=user_id
         self.message = message
@@ -65,8 +70,11 @@ class WaitingFunctionCall:
 
     async def run(self):
         await asyncio.sleep(self.delay)
-        await self.func(self.bot,self.user_id, self.message)
-        os.remove(self.path)
+        delay,notes=await self.func[0](self.bot,self.user_id, self.message)
+        #print(self.func)
+        #print(self.rec_func)
+        FolowUpCalls(self.bot,self.user_id,notes,delay)
+        #os.remove(self.path)
         #return val
         #with open(self.path, 'w') as f:
          #   json.dump({'chat_id': self.chat_id, 'message': self.message, 'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, f)
@@ -107,7 +115,7 @@ class Responder():
         #response_text='got message'#await gpt_logic(update)
         delay,notes=await self.wrapped_response(context.bot,user.id,update.message.text)
 
-        w=WaitingFunctionCall(self.wrapped_reminder,context.bot,user.id,notes,delay)
+        w=FolowUpCalls(context.bot,user.id,notes,delay)
         self.user_threads[user.id]=w
 
     #await w.task
@@ -146,17 +154,21 @@ class Responder():
         user_directories = [d for d in os.listdir('users') if os.path.isdir(join('users', d))]
         for user_dir in user_directories:
             path = join('users', user_dir)
+            user_id=int(user_dir)
             if exists(join(path, 'scedualed_respond.json')):
                 with open(join(path, 'scedualed_respond.json'), 'r') as f:
                     respond_info = json.load(f)
                 time_sent = datetime.strptime(respond_info['time'], '%Y-%m-%d %H:%M:%S')
                 time_now = datetime.now()
+                delay = (time_sent - time_now).total_seconds()
+                    
                 if time_sent > time_now:
-                    delay = (time_sent - time_now).total_seconds()
-                    w = WaitingFunctionCall(self.wrapped_reminder,bot, user_dir, respond_info['message'], delay)
-                    self.user_threads[int(user_dir)] = w
+                    w = FolowUpCalls( bot,user_id, respond_info['message'], delay)
                 else:
-                    asyncio.create_task(self.wrapped_errored_reminder(bot, user_dir, respond_info['message']))
+                    delay,message=await self.wrapped_errored_reminder(bot,user_id,respond_info['message'])
+                    w = FolowUpCalls(bot,user_id,message, delay)
+
+                self.user_threads[user_id] = w
             else: 
                 print(f'error missing response in:\n{path}')
             
@@ -167,7 +179,7 @@ class Conversation_Manager():
     #when using this u can just overide the process message method
     convs={} 
 
-    def __init__(self,path:str,bot,buffer_time=1.3):
+    def __init__(self,path:str,bot,buffer_time=3):
         with open(join(path,'init.json'),'r') as f:
             user_info = json.load(f)
         self.chat_id=user_info['chat_id']
@@ -175,10 +187,11 @@ class Conversation_Manager():
         
         self.path=path
         self.save_path=join(path,'texting.txt')
+        self.last_out=0 #this is unix time
         #self.mem_path=join(path,'scedualed_respond.json')
         self.buffer_time=buffer_time
       
-        self.task=asyncio.create_task(asyncio.sleep(0))
+        #self.task=asyncio.create_task(asyncio.sleep(0))
 
     @classmethod  
     def from_id(cls,idx,bot):
@@ -201,16 +214,21 @@ class Conversation_Manager():
                 json.dump({'chat_id': self.chat_id, 'message': message}, f)
 
     async def add(self,message):
-        self.task.cancel()
-        with open(join(self.path,'texting.txt'),'a') as f:
+        #self.task.cancel()
+        if time.time()-self.last_out>self.buffer_time:
+            asyncio.create_task(self.hook(self.done_gathering()+message,self.path))
+            return
+        
+        with open(self.save_path,'a') as f:
             f.write(message+'\n\n')
-        self.task=asyncio.create_task(self.resolve_messages())
+        #self.task=asyncio.create_task(self.resolve_messages())
 
 
     def done_gathering(self):
-        
+        self.last_out=time.time() 
+
         if not exists(self.save_path):
-            return None 
+            return '' 
 
         with open(self.save_path) as f:
             message=f.read()
@@ -219,10 +237,11 @@ class Conversation_Manager():
 
         return message
 
-    async def resolve_messages(self):
+    #async def resolve_messages(self):
         #print('started')
-        await asyncio.sleep(self.buffer_time) 
-        await self.hook(self.done_gathering(),self.path)
+        #await asyncio.sleep(self.buffer_time) 
+        #await self.hook(self.done_gathering(),self.path)
+        
         #print('done')
 
 
@@ -233,6 +252,7 @@ class Conversation_Manager():
 def tel_main(tel,response,reminder,errored_reminder,start) -> None:
     """Start the bot."""
     responder=Responder(response,reminder,errored_reminder,start)
+    FolowUpCalls.set_func(reminder)
 
     application = Application.builder().token(tel).post_init(responder.initialize_tasks).build()
     
@@ -255,24 +275,31 @@ if __name__ == "__main__":
         
         await conv.add(message)
 
-        return 10,'wait event trihggered'
+        return 1,'2'
 
     async def reminder(bot,user_id,notes:str):
+        #print(junk)
+        #print(bot)
         conv=Conversation_Manager.from_id(user_id,bot)
+        
         
         m= conv.done_gathering()
         if m:
             notes+=m
         await conv.send_message(f'reminder:\n{notes}')
+        
+        return int(notes),str(int(notes)*2)
 
     async def errored_reminder(bot,user_id,notes:str):
         conv=Conversation_Manager.from_id(user_id,bot)
         
+        #conv.task.cancel()
         m= conv.done_gathering()
         if m:
             notes+=m
         await conv.send_message(f'server error delayed response:\n{notes}')
 
+        return int(notes),str(int(notes)*2)
         #await send_message(bot,user_id,'server error delayed response:\n'+notes) 
 
     async def start(bot,user_id,user):

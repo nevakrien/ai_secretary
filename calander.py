@@ -66,6 +66,7 @@ class Calander():
     def add(self,d:dict):
         idx=self.get_count()
         start,end,name=self.verify_and_unload(d)
+        d['idx']=idx
 
         hour_capacity=self.capacity_check(start,end,60*60)
         day_capacity=self.capacity_check(start,end,s_in_d) 
@@ -138,6 +139,19 @@ class Calander():
                     ans.append(json.load(f)) 
         return ans
 
+    def get_next(self,days=7):
+        t=int(time.time())
+        for i in range(0,days):
+            path=self._get_parent_folder(t+i*s_in_d)
+            if exists(path):
+                m=min(int(name) for name in os.listdir(path))
+                path=join(path,str(m))
+                ans=[]
+                for j in os.listdir(path):
+                    with open(join(path,j)) as f:
+                        ans.append(json.load(f))
+                return ans
+
 
 
 if __name__=='__main__':
@@ -158,7 +172,11 @@ if __name__=='__main__':
     print(json.loads(j))
     #c.add(None)
     c.add({'start':1,'end':2,'name':'event name'})
-    c.add({'start':t,'end':t+5,'name':'next 5 seconds'}) 
+    #c.add({'start':t,'end':t+5,'name':'next 5 seconds'}) 
+    #c.add({'start':t,'end':t+10,'name':'next 10 seconds'}) 
+    #c.add({'start':t+5,'end':t+10,'name':'next 5 seconds'}) 
+    c.add({'start':t+s_in_d*3,'end':t+s_in_d*3+1,'name':'3 days'})
+    c.add({'start':t+s_in_d*5,'end':t+s_in_d*5+1,'name':'3 days'})
 
     print('found:')
     print(c.search_events_start(0,s_in_d*365*20))
@@ -198,4 +216,5 @@ if __name__=='__main__':
     print (c.capacity_check(0,100,100))
 
     print(c.add({'start':1,'end':27,'name':'event name'}))
-    
+    print('next')
+    print(c.get_next())

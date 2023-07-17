@@ -70,7 +70,7 @@ class MemoryFolder():
             self.prune()
 
         idx=self.get_count()
-        d={'text':text,'importance':importance,'viewed':0}
+        d={'text':text,'importance':importance,'viewed':0,'idx':idx}
         with open(join(self.curent,f'event_{idx}.jsonl'),'w') as f:
             json.dump(d,f)
         self.log_history(idx,d)
@@ -107,10 +107,17 @@ class MemoryFolder():
             d=json.loads(read_last_line(path)) 
 
         d['existed']=time.time()-getctime(path)
-        d['path']=path
+        #d['path']=path
         return d
 
-    def modify(self,idx:int,text=None,importance=None,view=False):
+    def modify(self,idx:int,text=None,importance=None,view=True):
+        '''
+        user sides modifacation claw. 
+        if the no change is passed this will delete the entry
+        '''
+        if text==None and importance==None and not view:
+            self._modify(idx,None)
+            return 
         d=self.get(idx)
 
         if text!=None:
@@ -123,8 +130,8 @@ class MemoryFolder():
 
         self._modify(idx,d)
 
-    def remove(self,idx:int):
-        self._modify(idx)
+    #def remove(self,idx:int):
+        #self._modify(idx)
 
     def get_all(self):
         ans=[]
@@ -166,7 +173,7 @@ if __name__=='__main__':
     except:
         pass
     print(a[3])
-    a.modify(5,'modified',view=True)
+    a.modify(5,'modified')
     print(a[5])
-    a.remove(5)
+    a.modify(5,view=False)
     print(a[5])

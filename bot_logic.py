@@ -1,12 +1,18 @@
-from calander import Calander 
+from calander import Calander,s_in_d
 from memory import MemoryFolder 
 from embedding import Lazy_embed #this one will be the debug version 
 #from server import Conversation_Manager
 
 from utills import min_max_scale
 
+import asyncio
+
 import os 
 from os.path import join,exists
+
+from datetime import datetime
+import time
+import pytz 
 
 class Bot():
 	def __init__(self,path,new=False):
@@ -14,13 +20,22 @@ class Bot():
 		
 		if new:
 			os.makedirs(path)
+			self.set_timezone('Asia/Jerusalem')
+
 		self.cal=Calander(join(path,'calander'),new=new)
 		
 		self.goals=MemoryFolder(join(path,'goals'),new=new)
-		self.mem=MemoryFolder(join(path,'memorys'),new=new)
+		self.mem=MemoryFolder(join(path,'memories'),new=new)
 		self.prof=MemoryFolder(join(path,'user profile'),new=new)
 		self.ref=MemoryFolder(join(path,'reflections'),new=new)
 
+	def set_timezone(self,tz):
+		with open(join(self.path,'time_zone.txt'),'w') as f:
+				f.write(tz)
+
+	async def get_timezone(self):
+		with open(join(self.path,'time_zone.txt')) as f:
+				return pytz.timezone(f.read())
 	
 	@classmethod
 	def init_debug_embed(cls,folder):
@@ -34,20 +49,125 @@ class Bot():
 		func=lambda x: get_embedding(x,model=model)
 		cls.embed=Lazy_embed(join('embeddings',model),func=func)
 
-	async def search_folder(self,key,mem,num=10):
-		data=mem.get_all()
-		#scores=[[self.embed(d['text'])@key,d['importance'],d['existed']] for d in data]
-		#scores=[]
-		for d in data:
-			d['embed']=self.embed(d['text'])
-		for d in data:
-			d['embed']=await self.embed(d['text'])
-		
-		scores=[[d['embed']@key,d['importance'],d['existed']] for d in data]
+	async def search_folder(self, key, mem, num=10):
+	    data = mem.get_all()
 
-		scores=min_max_scale(scores)
-		idx=(-scores).argsort()[:num]
-		return [data[i] for i in idx]
+	    if len(data) == 0:
+	        return []
+
+	    # Start tasks to read data and compute embeddings
+	    tasks = [asyncio.create_task(self.embed(d['text'])) for d in data]
+
+	    # Await tasks and assign embeddings to data
+	    for d, task in zip(data, tasks):
+	        d['embed'] = await task
+
+	    scores = [[d['embed'] @ key, d['importance'], d['existed']] for d in data]
+	    scores = min_max_scale(scores)
+	    idx = (-scores).argsort()[:num]
+
+	    return [data[i] for i in idx]
+
+
+	async def range_search(self,start,end):
+		return self.cal.range_search(start,end)
+
+	async def get_info(self,message,start,end):
+		t = int(time.time())
+
+		# Start the key and events tasks
+		key_task = asyncio.create_task(self.embed(message))
+		events_task = asyncio.create_task(self.range_search(start, end))
+
+		# Await key to start folder_tasks
+		key = await key_task
+		folders = [self.prof, self.goals, self.mem, self.ref]
+		folder_tasks = [asyncio.create_task(self.search_folder(key, x)) for x in folders]
+
+		# Finally, await events and folder_tasks
+		events = await events_task
+		folders = await asyncio.gather(*folder_tasks)
+
+		return [message, folders, events]
+
+	def format_info(self,message, folders, events,tz):
+		#tz=self.get_timezone()
+
+		ans='recent events:\n'
+		for i,e in enumerate(events):
+			start=datetime.fromtimestamp(e['start'], tz=tz).strftime('%Y-%m-%d %H:%M:%S')
+			end=datetime.fromtimestamp(e['end'], tz=tz).strftime('%Y-%m-%d %H:%M:%S')
+			ans+=f"{i}. {e['name']} starts:{start} ends:{end}\n"
+		ans+='\n'
+
+		ans+='Format:\nid. text [importance]:\n\n'
+		for folder,name in zip(folders,['user profile', 'goals', 'memories', 'reflections']):
+			ans+=f"{name}:\n"
+			for i,d in enumerate(folder):
+				ans+=f"{i}. {d['text']} [{d['importance']}]\n"
+			ans+='\n'
+
+		ans+=f'user said: {message}' 
+
+		return ans
+
+	async def respond_to_message(self, message):
+	    t = int(time.time())
+	    info=await self.get_info(message,t-s_in_d,t+s_in_d)
+	    ans=BotAnswer(self,info,await self.get_timezone())
+	    info=self.format_info(*info,tz=await self.get_timezone())
+	    delay = 10
+	    return ans,info, delay
+
+class BotAnswer():
+	def __init__(self,bot,info,tz):
+		self.bot=bot
+		self.tz=tz
+		#warning!!! order matters
+		self.folders={'user profile':bot.prof,'goals':bot.goals,'memories':bot.mem,'reflections':bot.ref}
+		self.note_info={k:v for k,v in zip(self.folders.keys(),info[1])}
+		self.event_info=info[2]
+	
+
+	async def search_calander(self,start:str,end:str):
+		start=self.tz.localize(datetime.strptime(start,"%Y-%m-%d %H:%M"))
+		end=self.tz.localize(datetime.strptime(end,"%Y-%m-%d %H:%M"))
+		
+		start=int(start.timestamp())
+		end=int(end.timestamp())
+
+		return await self.bot.range_search(start,end) 
+
+	def modify_note(self,folder,idx,text=None,importance=None):
+		'''
+        changes note number idx in folder 
+
+        if the no change is passed this will delete the entry
+
+        impotance should be an int 
+        and folder should be in ['user profile', 'goals', 'memories', 'reflections']
+        '''
+		if text==None and importance==None:
+			self.note_info[folder][idx]=None
+			return
+
+		d=self.note_info[folder][idx]
+		if text!=None:
+			d['text']=text
+		if importance!=None:
+			d['importance']=importance
+
+
+	def modify_event(self,idx,d):
+		'''
+		expects either a dict with ['start','end','name'] or None
+		if None is passed will delete the entry
+		'''
+		if d!=None:
+			d['start']=self.tz.localize(d['start'])
+			d['end']=self.tz.localize(d['end'])
+
+		self.event_info[idx]=d
 
 
 if __name__=='__main__':
@@ -60,19 +180,40 @@ if __name__=='__main__':
 	Bot.init_debug_embed('lol_hash')
 	#Bot.init_embed("text-embedding-ada-002")
 	bot=Bot('bot_sketch',new=True)
+	t=int(time.time()) 
 
 	#print(un_async(bot.embed('hi')))
 	for i in range(7):
-		bot.mem.add(f'yay{i}')
+		bot.ref.add(f'yay{i}'+i*'!',i)
+
+	for i in range(7):
+		bot.mem.add(f'stuff{i}'+(i%4)*'\n'+'yes',i%3)
 
 	x=un_async(bot.embed('hi'))
 	ans=un_async(bot.search_folder(x,bot.mem,num=4))
 	#Bot.lol='hi'
+	print(ans[0])
 	print([x['text'] for x in ans])
 
 	print('\n\n')
 
-	for i in range(10):
+	for i in range(100):
 		bot.cal.add({'start':i,'end':i+3,'name':str(i)})
 
 	print(bot.cal.range_search(5,7))
+
+	print(f'\n{datetime.fromtimestamp(1).astimezone(un_async(bot.get_timezone()))}')
+	
+	bot.cal.add({'start':t,'end':t+1,'name':'now'})
+	response=un_async(bot.respond_to_message('hey'))
+
+	print(response[1])
+	#response=BotAnswer(bot,un_async(bot.get_info('gay',0,100)))
+	ans= un_async(response[0].search_calander('1970-01-01 02:00','1970-01-01 02:01'))
+
+	print(max([int(x['name']) for x in ans]))
+
+	
+
+	response[0].modify_note('memories',1)
+	#response[0].modify_event(0,{'start':'2020-01-01 02:00','end':'2021-01-01 02:00','name':''})

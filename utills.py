@@ -46,3 +46,5 @@ def min_max_scale(x):
 def un_async(func):
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(func)
+
+
