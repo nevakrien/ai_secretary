@@ -213,6 +213,7 @@ class WakeupManager():
         message=d['message']
         assert type(name)==str
         assert type(message)==str
+        assert type(time)==int
         return time,name,message
 
 

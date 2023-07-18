@@ -1,4 +1,4 @@
-from calander import Calander,s_in_d
+from calander import Calander,WakeupManager,s_in_d
 from memory import MemoryFolder 
 from embedding import Lazy_embed #this one will be the debug version 
 #from server import Conversation_Manager
@@ -6,6 +6,7 @@ from embedding import Lazy_embed #this one will be the debug version
 from utills import min_max_scale,unix_from_string,string_from_unix
 
 import asyncio
+from utills import un_async
 
 import os 
 from os.path import join,exists
@@ -24,6 +25,8 @@ class Bot():
 			self.set_timezone('Asia/Jerusalem')
 
 		self.cal=Calander(join(path,'calander'),new=new)
+		self.wakeup=WakeupManager(join(path,'wakeups'),new=new)
+		self.wakeup.hook=None #this should be overwriten externaly but I am just making sure
 		
 		self.goals=MemoryFolder(join(path,'goals'),new=new)
 		self.mem=MemoryFolder(join(path,'memories'),new=new)
@@ -76,15 +79,19 @@ class Bot():
 	    return [data[i] for i in idx]
 
 
-	async def range_search(self,start,end):
+	async def calander_search(self,start,end):
 		return self.cal.range_search(start,end)
+
+	async def wake_search(self,start,end):
+		return self.wakeup.range_search(start,end)
 
 	async def get_info(self,message,start,end):
 		t = int(time.time())
 
 		# Start the key and events tasks
 		key_task = asyncio.create_task(self.embed(message))
-		events_task = asyncio.create_task(self.range_search(start, end))
+		events_task = asyncio.create_task(self.calander_search(start, end))
+		wake_task = asyncio.create_task(self.wake_search(start, end))
 
 		# Await key to start folder_tasks
 		key = await key_task
@@ -93,11 +100,12 @@ class Bot():
 
 		# Finally, await events and folder_tasks
 		events = await events_task
+		wake= await wake_task
 		folders = await asyncio.gather(*folder_tasks)
 
-		return [message, folders, events]
+		return [message, folders, events,wake]
 
-	def format_info(self,message, folders, events,tz):
+	def format_info(self,message, folders, events,wakeups,tz):
 		#tz=self.get_timezone()
 
 		ans='recent events:\n'
@@ -136,16 +144,19 @@ class BotAnswer():
 		#warning!!! order matters
 		self.folders={'user profile':bot.prof,'goals':bot.goals,'memories':bot.mem,'reflections':bot.ref}
 		self.cal=bot.cal
+		self.wakeup=bot.wakeup
 		self.note_info={k:v for k,v in zip(self.folders.keys(),info[1])}
 		self.new_notes={k:[] for k in self.folders.keys()}
 		self.event_info=info[2]
 		self.new_events=[]
+		self.wake_info=info[3]
+		self.new_wakeups=[]
 	
 
 	async def search_calander(self,start:str,end:str):
 		start=unix_from_string(start,self.tz)
 		end=unix_from_string(end,self.tz)
-		return await self.bot.range_search(start,end) 
+		return await self.bot.calander_search(start,end) 
 
 	def modify_note(self,folder,idx,text=None,importance=None):
 		'''
@@ -170,9 +181,34 @@ class BotAnswer():
 			d['text']=text
 		if importance!=None:
 			d['importance']=importance
+	
+	def modify_wakeup(self,idx,name=None,time=None,message=None):
+		'''
+        changes wakeup number idx in folder 
+        if idx is zero make a new one
 
+        if the no change is passed this will delete the entry
 
-	def modify_event(self,idx,d,wake=None):
+        impotance should be an int 
+        and folder should be in ['user profile', 'goals', 'memories', 'reflections']
+        '''
+		if time==None and name==None and message==None:
+			self.wake_info[idx]=[self.wake_info[idx]['idx'],self.wake_info[idx]['time']]
+			return
+
+		if idx==None:
+			self.new_wakeups.append({'name':name,'message':message,'time':unix_from_string(time)})
+			return
+		
+		d=self.self.wake_info[idx]
+		if name!=None:
+			d['name']=name
+		if message!=None:
+			d['message']=text
+		if time!=None:
+			d['time']=unix_from_string(time)
+
+	def modify_event(self,idx,d):
 		'''
 		expects either a dict with ['start','end','name'] or None
 		if None is passed will delete the entry
@@ -180,8 +216,7 @@ class BotAnswer():
 		if d!=None:
 			d['start']=unix_from_string(d['start'])
 			d['end']=unix_from_string(d['end'])
-			if wake:
-				d['wake']=wake
+			
 		else: 
 			d=self.event_info[idx]
 			d=[d['idx'],d['start']]
@@ -203,6 +238,11 @@ class BotAnswer():
 			#print(d)
 			self.cal.add(d)
 
+		#this need to be gathered and ran later
+		add_tasks=[self.wakeup.add(d) for d in self.new_wakeups]
+		#asyncio.run()
+		un_async(asyncio.gather(*add_tasks))
+
 		#modify
 		for k,v in self.note_info.items():
 			folder=self.folders[k]
@@ -222,13 +262,21 @@ class BotAnswer():
 			else:
 				self.cal.modify(d['idx'],d['start'],d)
 
+		for d in self.wake_info:
+			if isinstance(d,list):
+				#print('del')
+				self.wakeup.modify(d[0],d[1])
+			else:
+				self.wakeup.modify(d['idx'],d['time'],d)
+
+
 
 
 
 
 if __name__=='__main__':
 	from shutil import rmtree
-	from utills import un_async
+	
 	
 	if exists('bot_sketch'):
 	    rmtree('bot_sketch')
@@ -280,7 +328,13 @@ if __name__=='__main__':
 	response[0].modify_event(None,{'start':string_from_unix(t+100),'end':string_from_unix(t+1000),'name':'waking','wake':'do stuff'})
 	response[0].modify_event(None,{'start':string_from_unix(t),'end':string_from_unix(t+100),'name':'next'}) 
 
+	response[0].modify_wakeup(None,time='2023-01-02 02:00',message='stuff',name='wakeup')
+
 	response[0].resolve_changes()
+	#print(manager.tasks)
+	
+		#print('we canceled properly') 
+
 	print(bot.prof[0])
 	print(bot.cal.get_next())
 	#print(bot.cal.get_next(days=100,fields=['wake'],debug=True))
