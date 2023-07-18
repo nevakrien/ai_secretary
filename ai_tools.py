@@ -53,6 +53,7 @@ alowed_roles=('system','user','assistant','function')
         }
     }
 '''
+"""
 functions = [
     {
     "name": "change_note",
@@ -110,6 +111,94 @@ functions = [
 
         }
     ]
+"""
+functions = [
+    {
+        "name": "search_calander",
+        "description": "Searches calendar for a range from start to end",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start": {
+                    "type": "string",
+                    "description": "Start date and time in string format"
+                },
+                "end": {
+                    "type": "string",
+                    "description": "End date and time in string format"
+                }
+            },
+            "required": ["start", "end"],
+            "additionalProperties": False
+        }
+    },
+    {
+        "name": "modify_note",
+        "description": "Modifies note in a specified folder by idx. Creates a new note if idx is None. Removes note if all other fields are None.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "folder": {
+                    "type": "string",
+                    "enum": ["user profile", "goals", "memories", "reflections"],
+                    "description": "One of the four folder names: 'user profile', 'goals', 'memories', 'reflections'."
+                },
+                "idx": {
+                    "type": ["integer", "null"],
+                    "description": "Index of the note. Pass None for a new note."
+                },
+                "text": {
+                    "type": ["string", "null"],
+                    "description": "The desired text. Pass None if no change is required."
+                },
+                "importance": {
+                    "type": ["integer", "null"],
+                    "minimum": 0,
+                    "maximum": 10,
+                    "description": "A rank from 0 to 10. Pass None if no change is required."
+                }
+            },
+            "required": ["folder", "idx"],
+            "additionalProperties": False
+        }
+    },
+    {
+        "name": "modify_event",
+        "description": "Modifies event by idx. Creates a new event if idx is None. Removes event if all other fields are None.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "idx": {
+                    "type": ["integer", "null"],
+                    "description": "Index of the event. Pass None for a new event."
+                },
+                "d": {
+                    "type": ["object", "null"],
+                    "description": "Event details. Pass None for deletion.",
+                    "properties": {
+                        "start": {
+                            "type": ["string", "null"],
+                            "description": f"Start date and time in the format {r'%Y-%m-%d %H:%M'}. Pass None if no change is required."
+                        },
+                        "end": {
+                            "type": ["string", "null"],
+                            "description": f"End date and time in the format {r'%Y-%m-%d %H:%M'}. Pass None if no change is required."
+                        },
+                        "name": {
+                            "type": ["string", "null"],
+                            "description": "Event name. Pass None if no change is required."
+                        }
+                    },
+                    "required": ["start", "end", "name"],
+                    "additionalProperties": False
+                }
+            },
+            "additionalProperties": False
+        }
+    }
+]
+
+
 
 def get_current_time():
     current_time = datetime.now().strftime("%H:%M:%S")
@@ -142,6 +231,8 @@ if __name__=='__main__':
 	x=un_async(gpt_response(messages)) 
 	print(x)
 	'''
+
+	
 	messages=[{'role':'system','content':'you are a robo asistent'},
 	{'role':'user','content':'change note 5 to be on 8:00 in 16 july 2020'}]
 	print(messages)
@@ -150,4 +241,6 @@ if __name__=='__main__':
 	print(x)
 	print({k:type(v) for k,v in json.loads(x[1]['arguments']).items()})
 	print(x[1]['arguments'])
-	print(x[1]['arguments']['text'])
+	print(x[1]['arguments']['text']) 
+	
+

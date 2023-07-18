@@ -172,7 +172,7 @@ class BotAnswer():
 			d['importance']=importance
 
 
-	def modify_event(self,idx,d):
+	def modify_event(self,idx,d,wake=None):
 		'''
 		expects either a dict with ['start','end','name'] or None
 		if None is passed will delete the entry
@@ -180,6 +180,8 @@ class BotAnswer():
 		if d!=None:
 			d['start']=unix_from_string(d['start'])
 			d['end']=unix_from_string(d['end'])
+			if wake:
+				d['wake']=wake
 		else: 
 			d=self.event_info[idx]
 			d=[d['idx'],d['start']]
@@ -198,6 +200,7 @@ class BotAnswer():
 				folder.add(text=d['text'],importance=d['importance'])
 		
 		for d in self.new_events:
+			#print(d)
 			self.cal.add(d)
 
 		#modify
@@ -273,8 +276,13 @@ if __name__=='__main__':
 	
 	response[0].modify_event(0,None)
 	response[0].modify_event(None,{'start':'2021-01-01 02:00','end':'2021-01-02 02:00','name':'mood'})
+	#response[0].modify_event(None,{'start':'2021-01-01 02:00','end':'2021-01-02 02:00','name':'waking','wake':'do stuff'})
+	response[0].modify_event(None,{'start':string_from_unix(t+100),'end':string_from_unix(t+1000),'name':'waking','wake':'do stuff'})
+	response[0].modify_event(None,{'start':string_from_unix(t),'end':string_from_unix(t+100),'name':'next'}) 
 
 	response[0].resolve_changes()
 	print(bot.prof[0])
+	print(bot.cal.get_next())
+	#print(bot.cal.get_next(days=100,fields=['wake'],debug=True))
 
 	

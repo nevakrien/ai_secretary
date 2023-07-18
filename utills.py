@@ -62,3 +62,5 @@ def string_from_unix(timestamp, tz=None):
         m = m.astimezone(tz)
     return m.strftime("%Y-%m-%d %H:%M")
 
+def contains_all_fields(dictionary, fields):
+    return all(field in dictionary for field in fields)
