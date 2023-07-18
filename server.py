@@ -52,12 +52,21 @@ async def log_update(user_id,update):
             json.dump({'chat_id': chat_id, 'message': update.message.text}, f) 
 
 class FolowUpCalls:
+    user_threads={}
+    
     @classmethod
     def set_func(cls,func):
         cls.func=[func]
     #this is here so that scedualed responses work even after a server restart
+    
     def __init__(self, bot,user_id, message, delay):
-        #self.func=func
+        if message==None:
+            return
+        try:
+            self.user_threads[user_id].cancel()
+        except KeyError:
+            pass
+
         self.bot = bot
         self.user_id=user_id
         self.message = message
@@ -67,12 +76,15 @@ class FolowUpCalls:
         with open(self.path, 'w') as f:
             json.dump({'message': self.message,'delay': delay,'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, f)
         self.task = asyncio.create_task(self.run())
+        self.user_threads[user_id]=self
 
     async def run(self):
         await asyncio.sleep(self.delay)
         delay,notes=await self.func[0](self.bot,self.user_id, self.message)
-        #print(self.func)
-        #print(self.rec_func)
+        
+        if notes==None:
+            return
+
         FolowUpCalls(self.bot,self.user_id,notes,delay)
         #os.remove(self.path)
         #return val
@@ -81,8 +93,9 @@ class FolowUpCalls:
         
 
     def cancel(self):
-        if not self.task.done():
-            self.task.cancel()
+        #if not self.task.done():
+        self.task.cancel()
+        if exists(self.path):
             os.remove(self.path)
 
 class Responder():
@@ -99,7 +112,7 @@ class Responder():
         self.wrapped_errored_reminder=errored_reminder #this will excute if a reminder was server errored
         self.wrapped_start=start #this is excuted when a new user shows up
 
-        self.user_threads = {}
+        #self.user_threads = {}
 
     async def respond(self,update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """main response function"""
@@ -107,7 +120,7 @@ class Responder():
         path=join('users',str(user.id))
 
         try:
-            self.user_threads[user.id].cancel()
+            FolowUpCalls.user_threads[user.id].cancel()
         except KeyError:
             pass
 
@@ -116,7 +129,7 @@ class Responder():
         delay,notes=await self.wrapped_response(context.bot,user.id,update.message.text)
 
         w=FolowUpCalls(context.bot,user.id,notes,delay)
-        self.user_threads[user.id]=w
+        #self.user_threads[user.id]=w
 
     #await w.task
 
@@ -168,7 +181,7 @@ class Responder():
                     delay,message=await self.wrapped_errored_reminder(bot,user_id,respond_info['message'])
                     w = FolowUpCalls(bot,user_id,message, delay)
 
-                self.user_threads[user_id] = w
+                #self.user_threads[user_id] = w
             else: 
                 print(f'error missing response in:\n{path}')
             
@@ -180,6 +193,8 @@ class Conversation_Manager():
     convs={} 
 
     def __init__(self,path:str,bot,buffer_time=3):
+        self.semaphore = asyncio.Semaphore(1)
+
         with open(join(path,'init.json'),'r') as f:
             user_info = json.load(f)
         self.chat_id=user_info['chat_id']
@@ -189,10 +204,16 @@ class Conversation_Manager():
         self.save_path=join(path,'texting.txt')
         self.last_out=0 #this is unix time
         #self.mem_path=join(path,'scedualed_respond.json')
+        #self.lock=0
         self.buffer_time=buffer_time
       
         #self.task=asyncio.create_task(asyncio.sleep(0))
+    async def lock(self):
+        await self.semaphore.acquire()
 
+    def free(self):
+        self.semaphore.release() 
+        
     @classmethod  
     def from_id(cls,idx,bot):
         try:
@@ -204,48 +225,53 @@ class Conversation_Manager():
             return ans
  
     async def hook(self,message,path):
-        await self.send_message(f'we got:\n{message}')
+        #await self.lock()
+        if message:
+            await self.send_message(f'we got:\n{message}')
+        #self.free()
 
+    async def _hook(self):
+        #await self.lock()
+        await self.hook(await self.done_gathering(),self.path)
+        #self.free()
 
     async def send_message(self,message):
+        #assert not self.lock
+        
         t=datetime.now().strftime('%Y-%m-%d %H:%M:%S')+'.json'
         await self.bot.send_message(self.chat_id, message)
         with open(join(self.path,'send_messages',t), 'w') as f:
                 json.dump({'chat_id': self.chat_id, 'message': message}, f)
 
     async def add(self,message):
-        #self.task.cancel()
-        if time.time()-self.last_out>self.buffer_time:
-            asyncio.create_task(self.hook(self.done_gathering()+message,self.path))
-            return
-        
         with open(self.save_path,'a') as f:
             f.write(message+'\n\n')
-        #self.task=asyncio.create_task(self.resolve_messages())
-
-
-    def done_gathering(self):
-        self.last_out=time.time() 
-
-        if not exists(self.save_path):
-            return '' 
-
-        with open(self.save_path) as f:
-            message=f.read()
-
-        os.remove(self.save_path)
-
-        return message
-
-    #async def resolve_messages(self):
-        #print('started')
-        #await asyncio.sleep(self.buffer_time) 
-        #await self.hook(self.done_gathering(),self.path)
+        #self.task.cancel()
         
-        #print('done')
+        #if time.time()-self.last_out>self.buffer_time:
+        asyncio.create_task(self._hook())
 
 
+    async def done_gathering(self):
+        #await self.lock()
+        await self.lock()
+        #print('locked')
+        t=time.time()-self.last_out
+        await asyncio.sleep(self.buffer_time-t)
+        #print('woke')
 
+        if exists(self.save_path):
+            with open(self.save_path) as f:
+                message=f.read()
+                os.remove(self.save_path)
+        else: 
+            message= '' 
+
+        self.last_out=time.time()
+        
+        self.free()
+        #print('free')
+        return message
 
 
 
@@ -262,6 +288,8 @@ def tel_main(tel,response,reminder,errored_reminder,start) -> None:
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
+
+    thread_count=0
     print('started server')
     with open('secrets') as f:
         tel,ai=tuple(f.read().split('\n'))[:2]
@@ -275,7 +303,7 @@ if __name__ == "__main__":
         
         await conv.add(message)
 
-        return 1,'2'
+        return 10,'2'
 
     async def reminder(bot,user_id,notes:str):
         #print(junk)
@@ -283,23 +311,33 @@ if __name__ == "__main__":
         conv=Conversation_Manager.from_id(user_id,bot)
         
         
-        m= conv.done_gathering()
+        m= await conv.done_gathering()
         if m:
-            notes+=m
+            await conv.send_message(f'reminder got:\n{m}')
         await conv.send_message(f'reminder:\n{notes}')
         
-        return int(notes),str(int(notes)*2)
+        secs=int(notes)
+        if secs>4:
+            ans=None 
+        else:
+            ans=str(2*secs)
+        return secs,ans
 
     async def errored_reminder(bot,user_id,notes:str):
         conv=Conversation_Manager.from_id(user_id,bot)
         
         #conv.task.cancel()
-        m= conv.done_gathering()
+        m= await conv.done_gathering()
         if m:
-            notes+=m
+            await conv.send_message(f'found:\n{m}\n in memory')
         await conv.send_message(f'server error delayed response:\n{notes}')
 
-        return int(notes),str(int(notes)*2)
+        secs=int(notes)
+        if secs>4:
+            ans=None 
+        else:
+            ans=str(2*secs)
+        return secs,ans
         #await send_message(bot,user_id,'server error delayed response:\n'+notes) 
 
     async def start(bot,user_id,user):

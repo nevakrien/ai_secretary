@@ -16,6 +16,7 @@ import pytz
 
 class Bot():
 	def __init__(self,path,new=False):
+		self.semaphore = asyncio.Semaphore(1)
 		self.path=path 
 		
 		if new:
@@ -28,6 +29,12 @@ class Bot():
 		self.mem=MemoryFolder(join(path,'memories'),new=new)
 		self.prof=MemoryFolder(join(path,'user profile'),new=new)
 		self.ref=MemoryFolder(join(path,'reflections'),new=new)
+    
+	async def lock(self):
+		await self.semaphore.acquire()
+
+	def free(self):
+		self.semaphore.release()
 
 	def set_timezone(self,tz):
 		with open(join(self.path,'time_zone.txt'),'w') as f:
@@ -112,11 +119,14 @@ class Bot():
 		return ans
 
 	async def respond_to_message(self, message):
+	    await self.lock()
 	    t = int(time.time())
+	    tz=await self.get_timezone()
 	    info=await self.get_info(message,t-s_in_d,t+s_in_d)
-	    ans=BotAnswer(self,info,await self.get_timezone())
-	    info=self.format_info(*info,tz=await self.get_timezone())
+	    ans=BotAnswer(self,info,tz)
+	    info=self.format_info(*info,tz=tz)
 	    delay = 10
+	    self.free()
 	    return ans,info, delay
 
 class BotAnswer():
@@ -126,7 +136,9 @@ class BotAnswer():
 		#warning!!! order matters
 		self.folders={'user profile':bot.prof,'goals':bot.goals,'memories':bot.mem,'reflections':bot.ref}
 		self.note_info={k:v for k,v in zip(self.folders.keys(),info[1])}
+		self.new_notes={k:[] for k in self.folders.keys()}
 		self.event_info=info[2]
+		self.new_events=[]
 	
 
 	async def search_calander(self,start:str,end:str):
@@ -141,6 +153,7 @@ class BotAnswer():
 	def modify_note(self,folder,idx,text=None,importance=None):
 		'''
         changes note number idx in folder 
+        if idx is zero make a new one
 
         if the no change is passed this will delete the entry
 
@@ -151,6 +164,10 @@ class BotAnswer():
 			self.note_info[folder][idx]=None
 			return
 
+		if idx==None:
+			self.new_notes[folder].append({'text':text,'importance':importance})
+			return
+		
 		d=self.note_info[folder][idx]
 		if text!=None:
 			d['text']=text
@@ -167,7 +184,13 @@ class BotAnswer():
 			d['start']=self.tz.localize(d['start'])
 			d['end']=self.tz.localize(d['end'])
 
+		if idx==None:
+			new_events.append(d)
+			return 
+
 		self.event_info[idx]=d
+
+
 
 
 if __name__=='__main__':
@@ -216,4 +239,5 @@ if __name__=='__main__':
 	
 
 	response[0].modify_note('memories',1)
+	response[0].modify_note('memories',None,'hey',2)
 	#response[0].modify_event(0,{'start':'2020-01-01 02:00','end':'2021-01-01 02:00','name':''})
