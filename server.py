@@ -1,3 +1,13 @@
+'''
+dear future me I am so sorry for the mess you are about to see.
+I have worked for so long on this very simple idea rewriting it a bunch of times
+there is still a few of totaly useless things here I am too afraid to touch 
+
+regardless this seems to work and while I cant test it at scale I think it should work at scale too
+
+for future refrence this is why we dont pretend to know java... you are a python devloper for fuck sake write prosedural code
+'''
+
 import json
 
 import os
@@ -226,13 +236,15 @@ class Conversation_Manager():
  
     async def hook(self,message,path):
         #await self.lock()
-        if message:
-            await self.send_message(f'we got:\n{message}')
+        
+        await self.send_message(f'we got:\n{message}')
         #self.free()
 
     async def _hook(self):
         #await self.lock()
-        await self.hook(await self.done_gathering(),self.path)
+        m=await self.done_gathering()
+        if m:
+            await self.hook(m,self.path)
         #self.free()
 
     async def send_message(self,message):

@@ -53,7 +53,7 @@ class Calander():
         name=d['name']
         assert type(name)==str
         assert start<end 
-        assert end-start<=s_in_d
+        assert end-start<=s_in_d+1
         return start,end,name
     
     def capacity_check(self,start:int,end:int,interval:int):

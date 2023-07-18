@@ -4,6 +4,8 @@ import numpy as np
 
 import asyncio
 
+from datetime import datetime
+
 def write_int_to_file(filename, number):
     with open(filename, "wb") as f:
         f.write(number.to_bytes((number.bit_length() + 7) // 8, 'big'))
@@ -47,4 +49,16 @@ def un_async(func):
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(func)
 
+def unix_from_string(m,tz=None):
+    m=datetime.strptime(m,"%Y-%m-%d %H:%M")
+    if(tz):
+        m=tz.localize(m)
+    return int(m.timestamp())
+
+
+def string_from_unix(timestamp, tz=None):
+    m = datetime.fromtimestamp(timestamp)
+    if tz:
+        m = m.astimezone(tz)
+    return m.strftime("%Y-%m-%d %H:%M")
 

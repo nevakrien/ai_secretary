@@ -3,7 +3,7 @@ from memory import MemoryFolder
 from embedding import Lazy_embed #this one will be the debug version 
 #from server import Conversation_Manager
 
-from utills import min_max_scale
+from utills import min_max_scale,unix_from_string,string_from_unix
 
 import asyncio
 
@@ -102,8 +102,8 @@ class Bot():
 
 		ans='recent events:\n'
 		for i,e in enumerate(events):
-			start=datetime.fromtimestamp(e['start'], tz=tz).strftime('%Y-%m-%d %H:%M:%S')
-			end=datetime.fromtimestamp(e['end'], tz=tz).strftime('%Y-%m-%d %H:%M:%S')
+			start=string_from_unix(e['start'],tz=tz)
+			end=string_from_unix(e['end'], tz=tz)
 			ans+=f"{i}. {e['name']} starts:{start} ends:{end}\n"
 		ans+='\n'
 
@@ -135,6 +135,7 @@ class BotAnswer():
 		self.tz=tz
 		#warning!!! order matters
 		self.folders={'user profile':bot.prof,'goals':bot.goals,'memories':bot.mem,'reflections':bot.ref}
+		self.cal=bot.cal
 		self.note_info={k:v for k,v in zip(self.folders.keys(),info[1])}
 		self.new_notes={k:[] for k in self.folders.keys()}
 		self.event_info=info[2]
@@ -142,12 +143,8 @@ class BotAnswer():
 	
 
 	async def search_calander(self,start:str,end:str):
-		start=self.tz.localize(datetime.strptime(start,"%Y-%m-%d %H:%M"))
-		end=self.tz.localize(datetime.strptime(end,"%Y-%m-%d %H:%M"))
-		
-		start=int(start.timestamp())
-		end=int(end.timestamp())
-
+		start=unix_from_string(start,self.tz)
+		end=unix_from_string(end,self.tz)
 		return await self.bot.range_search(start,end) 
 
 	def modify_note(self,folder,idx,text=None,importance=None):
@@ -161,7 +158,7 @@ class BotAnswer():
         and folder should be in ['user profile', 'goals', 'memories', 'reflections']
         '''
 		if text==None and importance==None:
-			self.note_info[folder][idx]=None
+			self.note_info[folder][idx]=self.note_info[folder][idx]['idx']
 			return
 
 		if idx==None:
@@ -181,14 +178,47 @@ class BotAnswer():
 		if None is passed will delete the entry
 		'''
 		if d!=None:
-			d['start']=self.tz.localize(d['start'])
-			d['end']=self.tz.localize(d['end'])
+			d['start']=unix_from_string(d['start'])
+			d['end']=unix_from_string(d['end'])
+		else: 
+			d=self.event_info[idx]
+			d=[d['idx'],d['start']]
 
 		if idx==None:
-			new_events.append(d)
+			self.new_events.append(d)
 			return 
 
 		self.event_info[idx]=d
+
+	def resolve_changes(self):
+		#new
+		for k,v in self.new_notes.items():
+			folder=self.folders[k]
+			for d in v:
+				folder.add(text=d['text'],importance=d['importance'])
+		
+		for d in self.new_events:
+			self.cal.add(d)
+
+		#modify
+		for k,v in self.note_info.items():
+			folder=self.folders[k]
+			for d in v:
+				if isinstance(d,int):
+					folder._modify(d)
+				else:
+					print(d)
+					d['viewed']+=1
+					d.pop('embed')
+					folder._modify(d['idx'],d)
+
+		for d in self.event_info:
+			if isinstance(d,list):
+				#print('del')
+				self.cal.modify(d[0],d[1])
+			else:
+				self.cal.modify(d['idx'],d['start'],d)
+
 
 
 
@@ -239,5 +269,12 @@ if __name__=='__main__':
 	
 
 	response[0].modify_note('memories',1)
-	response[0].modify_note('memories',None,'hey',2)
-	#response[0].modify_event(0,{'start':'2020-01-01 02:00','end':'2021-01-01 02:00','name':''})
+	response[0].modify_note('user profile',None,'hey',2)
+	
+	response[0].modify_event(0,None)
+	response[0].modify_event(None,{'start':'2021-01-01 02:00','end':'2021-01-02 02:00','name':'mood'})
+
+	response[0].resolve_changes()
+	print(bot.prof[0])
+
+	
