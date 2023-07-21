@@ -178,13 +178,13 @@ class WakeupManager():
         print(message) 
 
     async def _hook(self,d,flag):
-        print('started hook')
+        #print('started hook')
         await asyncio.sleep(d['time'] - time.time())  # Wait until the time of the wakeup
         flag[0]=False
         await self.hook(d['name'],d['message'])
         d['happened'] = True  # Set happened flag to True
         self.modify(d['idx'], d['time'], d)  # Update the wakeup 
-        print('done hook')
+        #print('done hook')
         
     def _get_parent_folder(self, time_key: int) -> str:
         x=time_key//s_in_d

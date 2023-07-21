@@ -64,3 +64,12 @@ def string_from_unix(timestamp, tz=None):
 
 def contains_all_fields(dictionary, fields):
     return all(field in dictionary for field in fields)
+
+def openai_format(text,role='system'):
+    return {'role':role,'content':text}
+
+def unix_from_ans(d,tz=None):
+    ans=datetime(**d)
+    if tz:
+        ans=ans.astimezone(tz)
+    return int(ans.timestamp())

@@ -3,13 +3,15 @@ import numpy as np
 import json
 from datetime import datetime
 
+from utills import openai_format
+
 
 async def get_embedding(text, model="text-embedding-ada-002"):
    text = text.replace("\n", " ")
    x= await openai.Embedding.acreate(input = [text], model=model)
    return np.array(x['data'][0]['embedding'])
 
-async def gpt_response(messages,model='gpt-3.5-turbo'):
+async def gpt_response(messages,model='gpt-3.5-turbo',full=False):
 	#input validation
 	for m in messages:
 		assert m['role'] in alowed_roles
@@ -18,100 +20,24 @@ async def gpt_response(messages,model='gpt-3.5-turbo'):
 		assert 'content' in m.keys()
 
 	x=await openai.ChatCompletion.acreate(model=model,messages=messages,functions=functions)
-	print(x)	
+	if full:
+		return x
+	#print(x)	
 	x=x["choices"][0]["message"]
-	return x.get('content'),x.get("function_call")
+	return x,x.get('content'),x.get("function_call")
 
 alowed_roles=('system','user','assistant','function')
-'''
-    {
-        "name": "get_current_time",
-        "description": "Get the current time",
-        "parameters": {
-        	"type": "object",
-        	"properties": {
-        	}
 
-        }
-    },
-    {
-    "name": "change_note",
-        "description": "changes note idx to be text",
-        "parameters": {
-        	"type": "object",
-        	"properties": {
-        		"idx":{
-        			"type":'integer',
-        			"description": "index",
-        		},
-        		"text":{
-        			"type":'string',
-        			"description": "the desired text",
-        		}
-        	}
 
-        }
-    }
-'''
-"""
-functions = [
-    {
-    "name": "change_note",
-        "description": '''changes note in folder idx in the feilds that are not None
-        if all fields but the index are None remmoves note''',
-        "parameters": {
-        	"type": "object",
-        	"properties": {
-        		"idx":{
-        			"type":'integer',
-        			"description": "pass None to make new",
-        		},
-        		"folder":{
-        			"type":'string',
-        			"description": "one of your 4 folders ['user profile', 'goals', 'memories', 'reflections']",
-        		},
-        		"text":{
-        			"type":'string',
-        			"description": "the desired text",
-        		},
-        		"importance":{
-        			"type":'int',
-        			"description": 'a rank from 0 to 10',
-        		}
-        	}
-
-        }
-    },
-    "name": "change_event",
-        "description": "changes note idx in the feilds that are not None",
-        "parameters": {
-        	"type": "object",
-        	"properties": {
-        		"idx":{
-        			"type":'integer',
-        			"description": "pass None to make new",
-        		},
-        		"name":{
-        			"type":'string',
-        			"description": "the desired text",
-        		},
-        		"start":{
-        			"type":'string',
-        			"description": f"format {r'%Y-%m-%d %H:%M'}",
-        		},
-        		"end":{
-        			"type":'string',
-        			"description": f"format {r'%Y-%m-%d %H:%M'}",
-        		},
-        		"wakeup":{
-        			"type":'string',
-        			"description": 'if set to true will remind you of the time',
-        		}
-        	}
-
-        }
-    ]
-"""
+deafualt_messages=[openai_format('you are a robo asistent'),
+                   openai_format('''at your disposal you have 3 diffrent system: 
+                   calander that keeps events wakeup manager that alows you to scedual runing sessions for yourself and a note system with 4 folders'''),
+          openai_format('when passing in datetimes to functions make sure to only use the alowed keywords and integers inside of a dict clearly stating their purpose {year:2000,month:3,day:5,hour:23,minute:3}'),
+          openai_format('modify event only takes "start" and "end" as its time arguments and modify wakeup takes only "time" as its time argument'),
+                   #openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_event(idx=5) will remove: "5. wedding; start: 2023-07-20 21:06; end:2023-07-20 23:06"'),
+                  openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_note(idx=5) will remove event "5. I saw the user being sad[7]"'),
+                   openai_format('when selecting a wakeup/event the index is an integer DONT USE THE NAME'),
+                  ]
 functions = [
     {
         "name": "search_calander",
@@ -120,16 +46,15 @@ functions = [
             "type": "object",
             "properties": {
                 "start": {
-                    "type": "string",
-                    "description": "Start date and time in string format"
+                    "type": ["object", "null"],
+                    "description": "Start date and time in dict format"
                 },
                 "end": {
-                    "type": "string",
-                    "description": "End date and time in string format"
+                    "type": ["object", "null"],
+                    "description": "End date and time in dict format"
                 }
             },
             "required": ["start", "end"],
-            "additionalProperties": False
         }
     },
     {
@@ -162,85 +87,83 @@ functions = [
             "additionalProperties": False
         }
     },
-    {
-        "name": "modify_event",
-        "description": "Modifies event by idx. Creates a new event if idx is None. Removes event if all other fields are None.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "idx": {
-                    "type": ["integer", "null"],
-                    "description": "Index of the event. Pass None for a new event."
-                },
-                "d": {
-                    "type": ["object", "null"],
-                    "description": "Event details. Pass None for deletion.",
-                    "properties": {
-                        "start": {
-                            "type": ["string", "null"],
-                            "description": f"Start date and time in the format {r'%Y-%m-%d %H:%M'}. Pass None if no change is required."
-                        },
-                        "end": {
-                            "type": ["string", "null"],
-                            "description": f"End date and time in the format {r'%Y-%m-%d %H:%M'}. Pass None if no change is required."
-                        },
-                        "name": {
-                            "type": ["string", "null"],
-                            "description": "Event name. Pass None if no change is required."
-                        }
+        {
+            "name": "modify_event",
+            "description": "Modifies event by idx. Creates a new event if idx is None. Removes event if all other fields are None.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "idx": {
+                        "type": ["integer", "null"],
+                        "description": "Index of the event. Pass None for a new event."
                     },
-                    "required": ["start", "end", "name"],
-                    "additionalProperties": False
-                }
-            },
-            "additionalProperties": False
+                    "d": {
+                        "type": ["object", "null"],
+                        "description": "Event details. Pass None for deletion.",
+                        "properties": {
+                            "start": {
+                                "type": ["object", "null"],
+                                "description": f"Start date Pass None if no change is required."
+                            },
+                            "end": {
+                                "type": ["object", "null"],
+                                "description": f"End date Pass None if no change is required."
+                            },
+                            "name": {
+                                "type": ["string", "null"],
+                                "description": "Event name. Pass None if no change is required."
+                            }
+                        },
+                        "required": ["start", "end", "name"],
+                        "additionalProperties": False
+                    }
+                },
+                "additionalProperties": False
+            }
+        },
+        {
+            "name": "modify_wakeup",
+            "description": "Modifies wakeup session by idx. Creates a new wakeup if idx is None. Removes wakeup if all other fields are None.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "idx": {
+                        "type": ["integer", "null"],
+                        "description": "Index of the event. Pass None for a new event."
+                    },
+                    "name": {
+                                "type": ["string", "null"],
+                                "description": "Wakeup name. Pass None if no change is required."
+                            },
+                 "message": {
+                            "type": ["string", "null"],
+                            "description": "Wakeup message that will guide that session. Pass None if no change is required."
+                        } ,
+                   "time":  {
+                            "type": ["object", "null"],
+                            "description": f"End date and time . Pass None if no change is required."
+                    } ,          
+                    
+                },
+                "additionalProperties": False
+            }
         }
-    }
 ]
 
 
 
-def get_current_time():
-    current_time = datetime.now().strftime("%H:%M:%S")
-    return {'role':'function',
-    	'name':'get_current_time',
-    	'content':current_time}
+
 
 
 if __name__=='__main__':
-	from embedding import Lazy_embed 
-	from utills import un_async
+    from embedding import Lazy_embed 
+    from utills import un_async
 
-	with open('secrets') as f:
-	    tel,ai=tuple(f.read().split('\n'))[:2]
+    with open('secrets') as f:
+        tel,ai=tuple(f.read().split('\n'))[:2]
 
-	openai.api_key=ai
-	'''
-	print(un_async(get_embedding('stuff')))
-	embeder=Lazy_embed('embeddings/text-embedding-ada-002',func=get_embedding)
-	print(un_async(embeder('five')))
-	'''
-
-	'''
-	messages=[{'role':'system','content':'the user is an alcoholic you need to get them to stop'},
-	{'role':'user','content':'hey'},
-	{'role':'assistant','content':'hey'},
-	{'role':'user','content':'lets go see the game'},
-	get_current_time()]
-
-	x=un_async(gpt_response(messages)) 
-	print(x)
-	'''
-
-	
-	messages=[{'role':'system','content':'you are a robo asistent'},
-	{'role':'user','content':'change note 5 to be on 8:00 in 16 july 2020'}]
-	print(messages)
-	print(functions)
-	x=un_async(gpt_response(messages)) 
-	print(x)
-	print({k:type(v) for k,v in json.loads(x[1]['arguments']).items()})
-	print(x[1]['arguments'])
-	print(x[1]['arguments']['text']) 
-	
-
+    openai.api_key=ai
+    #print(openai_format('hi'))
+    x=[openai_format('hi')]
+    print(x)
+    #print(un_async(gpt_response(x)))

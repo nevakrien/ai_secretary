@@ -87,9 +87,11 @@ class FolowUpCalls:
             json.dump({'message': self.message,'delay': delay,'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, f)
         self.task = asyncio.create_task(self.run())
         self.user_threads[user_id]=self
+        self.done_waiting=False
 
     async def run(self):
         await asyncio.sleep(self.delay)
+        self.done_waiting=True
         delay,notes=await self.func[0](self.bot,self.user_id, self.message)
         
         if notes==None:
@@ -104,7 +106,9 @@ class FolowUpCalls:
 
     def cancel(self):
         #if not self.task.done():
-        self.task.cancel()
+        if not self.done_waiting:
+            self.task.cancel()
+            return
         if exists(self.path):
             os.remove(self.path)
 

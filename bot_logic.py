@@ -3,7 +3,9 @@ from memory import MemoryFolder
 from embedding import Lazy_embed #this one will be the debug version 
 #from server import Conversation_Manager
 
-from utills import min_max_scale,unix_from_string,string_from_unix
+from ai_tools import gpt_response
+
+from utills import min_max_scale,string_from_unix,openai_format,unix_from_ans
 
 import asyncio
 from utills import un_async
@@ -15,7 +17,10 @@ from datetime import datetime
 import time
 import pytz 
 
+import numpy as np
+
 class Bot():
+	ai_call=None
 	def __init__(self,path,new=False):
 		self.semaphore = asyncio.Semaphore(1)
 		self.path=path 
@@ -23,6 +28,9 @@ class Bot():
 		if new:
 			os.makedirs(path)
 			self.set_timezone('Asia/Jerusalem')
+
+		self.tz=self.get_timezone()
+		#self.ai_call=None
 
 		self.cal=Calander(join(path,'calander'),new=new)
 		self.wakeup=WakeupManager(join(path,'wakeups'),new=new)
@@ -40,19 +48,25 @@ class Bot():
 		self.semaphore.release()
 
 	def set_timezone(self,tz):
+		self.tz=pytz.timezone(tz)
 		with open(join(self.path,'time_zone.txt'),'w') as f:
 				f.write(tz)
 
-	async def get_timezone(self):
+	def get_timezone(self):
 		with open(join(self.path,'time_zone.txt')) as f:
 				return pytz.timezone(f.read())
 	
+	@classmethod
+	def init_gpt_func(cls,func):
+		cls.ai_call=[func]
+
 	@classmethod
 	def init_debug_embed(cls,folder):
 		cls.embed=Lazy_embed(folder)
 
 	@classmethod
 	def init_embed(cls,model):
+		print('you are using the real embedings')
 		#lazy import
 		from ai_tools import get_embedding
 
@@ -72,77 +86,151 @@ class Bot():
 	    for d, task in zip(data, tasks):
 	        d['embed'] = await task
 
-	    scores = [[d['embed'] @ key, d['importance'], d['existed']] for d in data]
+	    scores = [[d['embed']@ key, d['importance'], d['existed']] for d in data]
 	    scores = min_max_scale(scores)
 	    idx = (-scores).argsort()[:num]
 
 	    return [data[i] for i in idx]
 
+	async def key_names(self,arr):
+	    if not arr:
+	    	return 0
 
-	async def calander_search(self,start,end):
-		return self.cal.range_search(start,end)
+	    tasks = [asyncio.create_task(self.embed(d['name'])) for d in arr]
 
-	async def wake_search(self,start,end):
-		return self.wakeup.range_search(start,end)
+	    # Await tasks and assign embeddings to data
+	    for d, task in zip(arr, tasks):
+	        d['embed'] = await task
 
-	async def get_info(self,message,start,end):
+	    return np.mean([d['embed'] for d in arr],axis=0)
+
+
+	async def get_info(self,message,start,end,a=0.3,b=0.5,c=0.3,d=0.8):
 		t = int(time.time())
 
 		# Start the key and events tasks
 		key_task = asyncio.create_task(self.embed(message))
-		events_task = asyncio.create_task(self.calander_search(start, end))
-		wake_task = asyncio.create_task(self.wake_search(start, end))
+		events = self.cal.range_search(start, end)
+		wake = self.wakeup.range_search(start, end)
+		
+		#wake,events=await asyncio.gather(wake_task,events_task)
+		events.sort(key=lambda d: d['start'])
+		wake.sort(key=lambda d: d['time'])
 
 		# Await key to start folder_tasks
+		time_dep_key=await self.key_names(events+wake)
+		#time_dep=self.format_time_dependent(wake,events)
 		key = await key_task
-		folders = [self.prof, self.goals, self.mem, self.ref]
-		folder_tasks = [asyncio.create_task(self.search_folder(key, x)) for x in folders]
+		key+=a*time_dep_key
 
-		# Finally, await events and folder_tasks
-		events = await events_task
-		wake= await wake_task
-		folders = await asyncio.gather(*folder_tasks)
+		folders=[]
+
+		folders.append(await self.search_folder(key, self.mem))
+		if folders[-1]:
+			key+=b*np.mean([d['embed'] for d in folders[-1]],axis=0)
+
+		folders.append(await self.search_folder(key, self.prof))
+		if folders[-1]:
+			key+=c*np.mean([d['embed'] for d in folders[-1]],axis=0)
+
+		folders.append(await self.search_folder(key, self.goals))
+		if folders[-1]: 
+			key+=d*np.mean([d['embed'] for d in folders[-1]],axis=0)
+
+		folders.append(await self.search_folder(key, self.ref))
 
 		return [message, folders, events,wake]
 
-	def format_info(self,message, folders, events,wakeups,tz):
-		#tz=self.get_timezone()
-
-		ans='recent events:\n'
+	def format_time_dependent(self,events,wakes):
+		ans=[openai_format('events: index. name; start; end;')]#'recent events:\n'
+		
 		for i,e in enumerate(events):
-			start=string_from_unix(e['start'],tz=tz)
-			end=string_from_unix(e['end'], tz=tz)
-			ans+=f"{i}. {e['name']} starts:{start} ends:{end}\n"
-		ans+='\n'
-
-		ans+='Format:\nid. text [importance]:\n\n'
-		for folder,name in zip(folders,['user profile', 'goals', 'memories', 'reflections']):
-			ans+=f"{name}:\n"
-			for i,d in enumerate(folder):
-				ans+=f"{i}. {d['text']} [{d['importance']}]\n"
-			ans+='\n'
-
-		ans+=f'user said: {message}' 
+			start=string_from_unix(e['start'],tz=self.tz)
+			end=string_from_unix(e['end'], tz=self.tz)
+			ans.append(openai_format(f"{i}. {e['name']}; starts:{start}; ends:{end}"))
+		#ans+='\n'
+		ans.append(openai_format('wakeups: index. name; time\nmessage;'))
+		for i,w in enumerate(wakes):
+			time=string_from_unix(w['time'],tz=self.tz)
+			ans.append(openai_format(f"{i}. {w['name']}; time:{time}\n{w['message']}"))
 
 		return ans
 
-	async def respond_to_message(self, message):
+	def format_folder(self,folder,name):
+		if not folder:
+			return []
+		ans=[openai_format(f"{name}:\n")]
+		for i,d in enumerate(folder):
+				ans.append(openai_format(f"{i}. {d['text']} [{d['importance']}]",role='assistant'))
+		return ans
+
+	def format_folders(self,message, folders,source):
+		#tz=self.get_timezone()
+		#ans=self.format_time_dependent(wakeups,events)
+
+		ans=[openai_format('Format:\nid. text [importance]:')]
+		
+		for folder,name in zip(folders,['memories','user profile', 'goals',  'reflections']):
+			ans+=self.format_folder(folder,name)
+			
+
+		ans.append(openai_format(f'{message}',role=source)) 
+
+		return ans
+
+	async def logic_step(self,time_inputs,folder_inputs,info,ans):
+		x,text,function_call=await self.ai_call[0](time_inputs+folder_inputs)
+		folder_inputs.append(x)
+		if function_call:
+			try:
+				out= ans.funcs[function_call['name']](function_call['arguments'])
+				if out:
+					if function_call['name']=='search_calander':
+						ans.resolve_changes() 
+						info[-2:]=out
+						time_inputs=self.format_time_dependent(*info[2:4])
+						d=openai_format('sucessfuly changed the events at the top',role='function')
+						d['name']='search_calander'
+						folder_inputs.append(d)
+						ans=BotAnswer(self,info)
+
+			except Exception as e:
+				d=openai_format(str(e),role='function')
+				d['name']=function_call['name']
+				folder_inputs.append(d)
+		return ans
+
+	async def session(self, message,source):
 	    await self.lock()
 	    t = int(time.time())
-	    tz=await self.get_timezone()
+	    #tz=await self.get_timezone()
 	    info=await self.get_info(message,t-s_in_d,t+s_in_d)
-	    ans=BotAnswer(self,info,tz)
-	    info=self.format_info(*info,tz=tz)
-	    delay = 10
+	    ans=BotAnswer(self,info)
+	    folder_inputs=self.format_folders(*info[:2],source)
+	    time_inputs=self.format_time_dependent(*info[2:4])
+	    
+	    if self.ai_call:
+	    	ans=await self.logic_step(time_inputs,folder_inputs,info,ans)
+	    	self.free()
+	    	return ans
+	    else:
+	    	print('runing without ai calls')
+	    	delay = 10
 	    self.free()
-	    return ans,info, delay
+	    return ans,time_inputs+folder_inputs, delay
+	
+	async def respond_to_message(self, message):
+		return await self.session(message,source='user')
 
 class BotAnswer():
-	def __init__(self,bot,info,tz):
+	def __init__(self,bot,info):
 		self.bot=bot
-		self.tz=tz
+		self.tz=bot.tz
+
+		self.funcs={'search_calander':self.search_calander, 'modify_note':self.modify_note,
+		 'modify_event':self.modify_event, 'modify_wakeup':self.modify_wakeup}
 		#warning!!! order matters
-		self.folders={'user profile':bot.prof,'goals':bot.goals,'memories':bot.mem,'reflections':bot.ref}
+		self.folders={'memories':bot.mem,'user profile':bot.prof,'goals':bot.goals,'reflections':bot.ref}
 		self.cal=bot.cal
 		self.wakeup=bot.wakeup
 		self.note_info={k:v for k,v in zip(self.folders.keys(),info[1])}
@@ -153,10 +241,12 @@ class BotAnswer():
 		self.new_wakeups=[]
 	
 
-	async def search_calander(self,start:str,end:str):
-		start=unix_from_string(start,self.tz)
-		end=unix_from_string(end,self.tz)
-		return await self.bot.calander_search(start,end) 
+	def search_calander(self,start:dict,end:dict):
+		start=unix_from_ans(start,self.tz)
+		end=unix_from_ans(end,self.tz)
+		events=self.cal.range_search(start,end) 
+		wakes=self.wakeup.range_search(start,end) 
+		return events,wakes
 
 	def modify_note(self,folder,idx,text=None,importance=None):
 		'''
@@ -197,7 +287,7 @@ class BotAnswer():
 			return
 
 		if idx==None:
-			self.new_wakeups.append({'name':name,'message':message,'time':unix_from_string(time)})
+			self.new_wakeups.append({'name':name,'message':message,'time':unix_from_ans(time)})
 			return
 		
 		d=self.self.wake_info[idx]
@@ -206,7 +296,7 @@ class BotAnswer():
 		if message!=None:
 			d['message']=text
 		if time!=None:
-			d['time']=unix_from_string(time)
+			d['time']=unix_from_ans(time)
 
 	def modify_event(self,idx,d):
 		'''
@@ -214,8 +304,8 @@ class BotAnswer():
 		if None is passed will delete the entry
 		'''
 		if d!=None:
-			d['start']=unix_from_string(d['start'])
-			d['end']=unix_from_string(d['end'])
+			d['start']=unix_from_ans(d['start'])
+			d['end']=unix_from_ans(d['end'])
 			
 		else: 
 			d=self.event_info[idx]
@@ -250,7 +340,7 @@ class BotAnswer():
 				if isinstance(d,int):
 					folder._modify(d)
 				else:
-					print(d)
+					#print(d)
 					d['viewed']+=1
 					d.pop('embed')
 					folder._modify(d['idx'],d)
@@ -260,6 +350,7 @@ class BotAnswer():
 				#print('del')
 				self.cal.modify(d[0],d[1])
 			else:
+				d.pop('embed')
 				self.cal.modify(d['idx'],d['start'],d)
 
 		for d in self.wake_info:
@@ -267,12 +358,8 @@ class BotAnswer():
 				#print('del')
 				self.wakeup.modify(d[0],d[1])
 			else:
+				d.pop('embed')
 				self.wakeup.modify(d['idx'],d['time'],d)
-
-
-
-
-
 
 if __name__=='__main__':
 	from shutil import rmtree
@@ -284,6 +371,7 @@ if __name__=='__main__':
 	Bot.init_debug_embed('lol_hash')
 	#Bot.init_embed("text-embedding-ada-002")
 	bot=Bot('bot_sketch',new=True)
+	bot.wakeup.hook=lambda n,m: asyncio.sleep(0)
 	t=int(time.time()) 
 
 	#print(un_async(bot.embed('hi')))
@@ -306,37 +394,42 @@ if __name__=='__main__':
 
 	print(bot.cal.range_search(5,7))
 
-	print(f'\n{datetime.fromtimestamp(1).astimezone(un_async(bot.get_timezone()))}')
+	print(f'\n{datetime.fromtimestamp(1).astimezone(bot.tz)}')
 	
+	bot.cal.add({'start':t+5,'end':t+7,'name':'later'})
 	bot.cal.add({'start':t,'end':t+1,'name':'now'})
+	un_async(bot.wakeup.add({'time':t+4,'name':'god dam it','message':'we really need to do that thing in that place'}))
+	un_async(bot.wakeup.add({'time':t+60*6,'name':'mam','message':'naaaa'}))
 	response=un_async(bot.respond_to_message('hey'))
 
 	print(response[1])
-	#response=BotAnswer(bot,un_async(bot.get_info('gay',0,100)))
-	ans= un_async(response[0].search_calander('1970-01-01 02:00','1970-01-01 02:01'))
+	ans = response[0].search_calander({'year': 1970, 'month': 1, 'day': 1, 'hour': 2, 'minute': 0},
+	                                           {'year': 1970, 'month': 1, 'day': 1, 'hour': 2, 'minute': 1})
 
-	print(max([int(x['name']) for x in ans]))
+	#print(max([int(x['name']) for x in ans]))
 
-	
+	response[0].modify_note('memories', 1)
+	response[0].modify_note('user profile', None, 'hey', 2)
 
-	response[0].modify_note('memories',1)
-	response[0].modify_note('user profile',None,'hey',2)
-	
-	response[0].modify_event(0,None)
-	response[0].modify_event(None,{'start':'2021-01-01 02:00','end':'2021-01-02 02:00','name':'mood'})
-	#response[0].modify_event(None,{'start':'2021-01-01 02:00','end':'2021-01-02 02:00','name':'waking','wake':'do stuff'})
-	response[0].modify_event(None,{'start':string_from_unix(t+100),'end':string_from_unix(t+1000),'name':'waking','wake':'do stuff'})
-	response[0].modify_event(None,{'start':string_from_unix(t),'end':string_from_unix(t+100),'name':'next'}) 
+	response[0].modify_event(0, None)
+	response[0].modify_event(None, {'start': {'year': 2021, 'month': 1, 'day': 1, 'hour': 2, 'minute': 0},
+	                                'end': {'year': 2021, 'month': 1, 'day': 2, 'hour': 2, 'minute': 0},
+	                                'name': 'mood'})
+	response[0].modify_event(None, {'start': {'year': 2023, 'month': 7, 'day': 29, 'hour': 5, 'minute': 31},
+	                                'end': {'year': 2023, 'month': 7, 'day': 29, 'hour': 21, 'minute': 47},
+	                                'name': 'waking',
+	                                'wake': 'do stuff'})
+	response[0].modify_event(None, {'start': {'year': 2023, 'month': 7, 'day': 20, 'hour': 21, 'minute': 31},
+	                                'end': {'year': 2023, 'month': 7, 'day': 20, 'hour': 22, 'minute': 31},
+	                                'name': 'next'})
 
-	response[0].modify_wakeup(None,time='2023-01-02 02:00',message='stuff',name='wakeup')
+	response[0].modify_wakeup(None, time={'year': 2023, 'month': 1, 'day': 2, 'hour': 2, 'minute': 0},
+	                          message='stuff', name='wakeup')
 
 	response[0].resolve_changes()
-	#print(manager.tasks)
-	
-		#print('we canceled properly') 
 
 	print(bot.prof[0])
 	print(bot.cal.get_next())
-	#print(bot.cal.get_next(days=100,fields=['wake'],debug=True))
+	print(bot.cal.get_next(days=100))
 
-	
+		
