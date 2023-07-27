@@ -5,7 +5,7 @@ from embedding import Lazy_embed #this one will be the debug version
 
 from ai_tools import gpt_response
 
-from utills import min_max_scale,string_from_unix,openai_format,unix_from_ans
+from utills import min_max_scale,string_from_unix,openai_format,unix_from_ans,search_key
 
 import asyncio
 from utills import un_async
@@ -141,27 +141,41 @@ class Bot():
 
 		return [message, folders, events,wake]
 
+	def format_wakeup(self,d,i):
+		time=string_from_unix(d['time'],tz=self.tz)
+		return f"{i}. {d['name']}; time:{time}\n{d['message']}"
+	
+	def format_event(self,d,i):
+		start=string_from_unix(d['start'],tz=self.tz)
+		end=string_from_unix(d['end'], tz=self.tz)
+		return f"{i}. {d['name']}; starts:{start}; ends:{end}"
+	
 	def format_time_dependent(self,events,wakes):
 		ans=[openai_format('events: index. name; start; end;')]#'recent events:\n'
 		
 		for i,e in enumerate(events):
-			start=string_from_unix(e['start'],tz=self.tz)
-			end=string_from_unix(e['end'], tz=self.tz)
-			ans.append(openai_format(f"{i}. {e['name']}; starts:{start}; ends:{end}"))
+			ans.append(openai_format(self.format_event(e,i)))
+			#start=string_from_unix(e['start'],tz=self.tz)
+			#end=string_from_unix(e['end'], tz=self.tz)
+			#ans.append(openai_format(f"{i}. {e['name']}; starts:{start}; ends:{end}"))
 		#ans+='\n'
 		ans.append(openai_format('wakeups: index. name; time\nmessage;'))
 		for i,w in enumerate(wakes):
-			time=string_from_unix(w['time'],tz=self.tz)
-			ans.append(openai_format(f"{i}. {w['name']}; time:{time}\n{w['message']}"))
+			ans.append(openai_format(self.format_wakeup(w,i)))
+			#time=string_from_unix(w['time'],tz=self.tz)
+			#ans.append(openai_format(f"{i}. {w['name']}; time:{time}\n{w['message']}"))
 
 		return ans
+
+	def format_note(self,d,i):
+		return f"{i}. {d['text']} [{d['importance']}]"
 
 	def format_folder(self,folder,name):
 		if not folder:
 			return []
 		ans=[openai_format(f"{name}:\n")]
 		for i,d in enumerate(folder):
-				ans.append(openai_format(f"{i}. {d['text']} [{d['importance']}]",role='assistant'))
+				ans.append(openai_format(self.format_note(d,i),role='assistant'))
 		return ans
 
 	def format_folders(self,message, folders,source):
@@ -185,19 +199,20 @@ class Bot():
 			try:
 				out= ans.funcs[function_call['name']](function_call['arguments'])
 				if out:
-					if function_call['name']=='search_calander':
+					if function_call['name']=='range_search_calander':
 						ans.resolve_changes() 
-						info[-2:]=out
+						info[2:4]=out
 						time_inputs=self.format_time_dependent(*info[2:4])
 						d=openai_format('sucessfuly changed the events at the top',role='function')
-						d['name']='search_calander'
+						d['name']='range_search_calander'
 						folder_inputs.append(d)
 						ans=BotAnswer(self,info)
 
 			except Exception as e:
-				d=openai_format(str(e),role='function')
+				d=openai_format(f'error or type:{str(type(e))}: {str(e)}',role='function')
 				d['name']=function_call['name']
 				folder_inputs.append(d)
+				ans=BotAnswer(self,info)
 		return ans
 
 	async def session(self, message,source):
@@ -227,7 +242,7 @@ class BotAnswer():
 		self.bot=bot
 		self.tz=bot.tz
 
-		self.funcs={'search_calander':self.search_calander, 'modify_note':self.modify_note,
+		self.funcs={'word_search_calander':self.word_search_calander,'range_search_calander':self.range_search_calander, 'modify_note':self.modify_note,
 		 'modify_event':self.modify_event, 'modify_wakeup':self.modify_wakeup}
 		#warning!!! order matters
 		self.folders={'memories':bot.mem,'user profile':bot.prof,'goals':bot.goals,'reflections':bot.ref}
@@ -240,8 +255,11 @@ class BotAnswer():
 		self.wake_info=info[3]
 		self.new_wakeups=[]
 	
-
-	def search_calander(self,start:dict,end:dict):
+	def word_search_calander(self,key:str):
+		events=search_key(self.cal.curent,key)
+		wakes=search_key(self.wakeup.curent,key)
+		return events,wakes
+	def range_search_calander(self,start:dict,end:dict):
 		start=unix_from_ans(start,self.tz)
 		end=unix_from_ans(end,self.tz)
 		events=self.cal.range_search(start,end) 
@@ -260,11 +278,11 @@ class BotAnswer():
         '''
 		if text==None and importance==None:
 			self.note_info[folder][idx]=self.note_info[folder][idx]['idx']
-			return
+			return f'removed note {idx} from folder "{folder}"'
 
 		if idx==None:
 			self.new_notes[folder].append({'text':text,'importance':importance})
-			return
+			return f'added a new note to folder "{folder}"'
 		
 		d=self.note_info[folder][idx]
 		if text!=None:
@@ -360,76 +378,194 @@ class BotAnswer():
 			else:
 				d.pop('embed')
 				self.wakeup.modify(d['idx'],d['time'],d)
+class AIPupet():
+	api_calls=[{
+    'role': 'assistant', 
+    'content': None, 
+    'function_call': {
+        'name': 'range_search_calander', 
+        'arguments': {
+            'start': {
+                'year': 2023,
+                'month': 6,
+                'day': 1
+            },
+            'end': {
+                'year': 2023,
+                'month': 6,
+                'day': 30
+            }
+        }
+    }
+},
+{
+    'role': 'assistant', 
+    'content': None, 
+    'function_call': {
+        'name': 'modify_note', 
+        'arguments': {
+            'folder': 'memories',
+            'idx': None,
+            'text': 'Visit grandma',
+            'importance': 5
+        }
+    }
+},
+{
+    'role': 'assistant',
+    'content': 'I will remove the text and importance from that note.',
+    'function_call': {
+        'name': 'modify_note',
+        'arguments': {
+            'folder': 'memories',
+            'idx': 0,
+            'text': 'changed',
+            'importance': None
+        }
+    }
+},
+{
+    'role': 'assistant',
+    'content': 'I will remove the text and importance from that note.',
+    'function_call': {
+        'name': 'modify_note',
+        'arguments': {
+            'folder': 'memories',
+            'idx': 0,
+            'text': None,
+            'importance': 100
+        }
+    }
+},
+
+{
+    'role': 'assistant',
+    'content': 'I will remove the text and importance from that note.',
+    'function_call': {
+        'name': 'modify_note',
+        'arguments': {
+            'folder': 'memories',
+            'idx': 2,
+            'text': None,
+            'importance': None
+        }
+    }
+},
+{
+    'role': 'assistant',
+    'content': 'I am afraid I can only search within specific date ranges.',
+    'function_call': None
+},
+{
+    'role': 'assistant',
+    'content': 'I will modify that note for you.',
+    'function_call': {
+        'name': 'modify_note',
+        'arguments': {
+            'folder': 'memories',
+            'idx': 2,
+            'text': 'Visit grandma',
+            'importance': 5
+        }
+    }
+},
+
+
+]
+	def __init__(self):
+		self.idx=0
+	async def __call__(self,m):
+		x=self.api_calls[self.idx]
+		self.idx+=1
+		print(m)
+		return x,x.get('content'),x.get("function_call")
+
+
 
 if __name__=='__main__':
 	from shutil import rmtree
-	
-	
+		
 	if exists('bot_sketch'):
 	    rmtree('bot_sketch')
 	
-	Bot.init_debug_embed('lol_hash')
-	#Bot.init_embed("text-embedding-ada-002")
+	pupet=AIPupet()
 	bot=Bot('bot_sketch',new=True)
-	bot.wakeup.hook=lambda n,m: asyncio.sleep(0)
-	t=int(time.time()) 
-
-	#print(un_async(bot.embed('hi')))
-	for i in range(7):
-		bot.ref.add(f'yay{i}'+i*'!',i)
-
-	for i in range(7):
-		bot.mem.add(f'stuff{i}'+(i%4)*'\n'+'yes',i%3)
-
-	x=un_async(bot.embed('hi'))
-	ans=un_async(bot.search_folder(x,bot.mem,num=4))
-	#Bot.lol='hi'
-	print(ans[0])
-	print([x['text'] for x in ans])
-
-	print('\n\n')
-
-	for i in range(100):
-		bot.cal.add({'start':i,'end':i+3,'name':str(i)})
-
-	print(bot.cal.range_search(5,7))
-
-	print(f'\n{datetime.fromtimestamp(1).astimezone(bot.tz)}')
 	
-	bot.cal.add({'start':t+5,'end':t+7,'name':'later'})
-	bot.cal.add({'start':t,'end':t+1,'name':'now'})
-	un_async(bot.wakeup.add({'time':t+4,'name':'god dam it','message':'we really need to do that thing in that place'}))
-	un_async(bot.wakeup.add({'time':t+60*6,'name':'mam','message':'naaaa'}))
-	response=un_async(bot.respond_to_message('hey'))
+	bot.wakeup.hook=lambda n,m: asyncio.sleep(0)
+	Bot.init_debug_embed('lol_hash') 
+	bot.init_gpt_func(pupet)
 
-	print(response[1])
-	ans = response[0].search_calander({'year': 1970, 'month': 1, 'day': 1, 'hour': 2, 'minute': 0},
-	                                           {'year': 1970, 'month': 1, 'day': 1, 'hour': 2, 'minute': 1})
+	x=un_async(bot.respond_to_message('HI'))
+	print(x)
 
-	#print(max([int(x['name']) for x in ans]))
+	legacy_test=True
+	if legacy_test:
+		
+		bot.ai_call=None
+		#Bot.init_debug_embed('lol_hash')
+		#Bot.init_embed("text-embedding-ada-002")
+		#bot=Bot('bot_sketch',new=True)
+		#bot.wakeup.hook=lambda n,m: asyncio.sleep(0)
+		t=int(time.time()) 
 
-	response[0].modify_note('memories', 1)
-	response[0].modify_note('user profile', None, 'hey', 2)
+		#print(un_async(bot.embed('hi')))
+		for i in range(7):
+			bot.ref.add(f'yay{i}'+i*'!',i)
 
-	response[0].modify_event(0, None)
-	response[0].modify_event(None, {'start': {'year': 2021, 'month': 1, 'day': 1, 'hour': 2, 'minute': 0},
-	                                'end': {'year': 2021, 'month': 1, 'day': 2, 'hour': 2, 'minute': 0},
-	                                'name': 'mood'})
-	response[0].modify_event(None, {'start': {'year': 2023, 'month': 7, 'day': 29, 'hour': 5, 'minute': 31},
-	                                'end': {'year': 2023, 'month': 7, 'day': 29, 'hour': 21, 'minute': 47},
-	                                'name': 'waking',
-	                                'wake': 'do stuff'})
-	response[0].modify_event(None, {'start': {'year': 2023, 'month': 7, 'day': 20, 'hour': 21, 'minute': 31},
-	                                'end': {'year': 2023, 'month': 7, 'day': 20, 'hour': 22, 'minute': 31},
-	                                'name': 'next'})
+		for i in range(7):
+			bot.mem.add(f'stuff{i}'+(i%4)*'\n'+'yes',i%3)
 
-	response[0].modify_wakeup(None, time={'year': 2023, 'month': 1, 'day': 2, 'hour': 2, 'minute': 0},
-	                          message='stuff', name='wakeup')
+		x=un_async(bot.embed('hi'))
+		ans=un_async(bot.search_folder(x,bot.mem,num=4))
+		#Bot.lol='hi'
+		print(ans[0])
+		print([x['text'] for x in ans])
 
-	response[0].resolve_changes()
+		print('\n\n')
 
-	print(bot.prof[0])
-	print(bot.cal.get_next())
-	print(bot.cal.get_next(days=100))
+		for i in range(100):
+			bot.cal.add({'start':i,'end':i+3,'name':str(i)})
+
+		print(bot.cal.range_search(5,7))
+
+		print(f'\n{datetime.fromtimestamp(1).astimezone(bot.tz)}')
+		
+		bot.cal.add({'start':t+5,'end':t+7,'name':'later'})
+		bot.cal.add({'start':t,'end':t+1,'name':'now'})
+		un_async(bot.wakeup.add({'time':t+4,'name':'god dam it','message':'we really need to do that thing in that place'}))
+		un_async(bot.wakeup.add({'time':t+60*6,'name':'mam','message':'naaaa'}))
+		response=un_async(bot.respond_to_message('hey'))
+
+		print(response[1])
+		#ans = response[0].range_search_calander({'year': 1970, 'month': 1, 'day': 1, 'hour': 2, 'minute': 0},
+		 #                                          {'year': 1970, 'month': 1, 'day': 1, 'hour': 2, 'minute': 1})
+
+		#print(max([int(x['name']) for x in ans]))
+
+		response[0].modify_note('memories', 1)
+		response[0].modify_note('user profile', None, 'hey', 2)
+
+		response[0].modify_event(0, None)
+		response[0].modify_event(None, {'start': {'year': 2021, 'month': 1, 'day': 1, 'hour': 2, 'minute': 0},
+		                                'end': {'year': 2021, 'month': 1, 'day': 2, 'hour': 2, 'minute': 0},
+		                                'name': 'mood'})
+		response[0].modify_event(None, {'start': {'year': 2023, 'month': 7, 'day': 29, 'hour': 5, 'minute': 31},
+		                                'end': {'year': 2023, 'month': 7, 'day': 29, 'hour': 21, 'minute': 47},
+		                                'name': 'waking',
+		                                'wake': 'do stuff'})
+		response[0].modify_event(None, {'start': {'year': 2023, 'month': 7, 'day': 20, 'hour': 21, 'minute': 31},
+		                                'end': {'year': 2023, 'month': 7, 'day': 20, 'hour': 22, 'minute': 31},
+		                                'name': 'next'})
+
+		response[0].modify_wakeup(None, time={'year': 2023, 'month': 1, 'day': 2, 'hour': 2, 'minute': 0},
+		                          message='stuff', name='wakeup')
+
+		response[0].resolve_changes()
+
+		print(bot.prof[0])
+		print(bot.cal.get_next())
+		print(bot.cal.get_next(days=100))
+
+		print(response[0].word_search_calander('later'))
 
 		

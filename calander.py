@@ -307,6 +307,7 @@ class WakeupManager():
                     ans.extend([join(path,x,s) for s in os.listdir(join(path,x))])
         return ans
 
+
     def recover_from_crash(self):
         # Get all wakeups
         wakeups = self.range_search(0, int(time.time()) + s_in_d*365*20)
@@ -454,7 +455,10 @@ if __name__=='__main__':
         print('we canceled properly')
     #wakeup2_result = manager.get_last(1)
     #assert wakeup2_result['happened'] == True, "Wakeup 2 did not occur"
-
+    from utills import search_key
+    print(search_key(manager.curent,'test'))
+    print(search_key(manager.curent,'not apearing'))
+    
     print("All tests passed successfully!")
 
     # Clean up
@@ -462,4 +466,4 @@ if __name__=='__main__':
     #manager.modify(1, wakeup2['time'])
 
     #loop.run_forever()
-    print("Clean up successful!")
+    #print("Clean up successful!")

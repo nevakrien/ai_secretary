@@ -35,22 +35,36 @@ deafualt_messages=[openai_format('you are a robo asistent'),
           openai_format('when passing in datetimes to functions make sure to only use the alowed keywords and integers inside of a dict clearly stating their purpose {year:2000,month:3,day:5,hour:23,minute:3}'),
           openai_format('modify event only takes "start" and "end" as its time arguments and modify wakeup takes only "time" as its time argument'),
                    #openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_event(idx=5) will remove: "5. wedding; start: 2023-07-20 21:06; end:2023-07-20 23:06"'),
-                  openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_note(idx=5) will remove event "5. I saw the user being sad[7]"'),
-                   openai_format('when selecting a wakeup/event the index is an integer DONT USE THE NAME'),
+                  openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_note(idx=5,folder="memories") will remove event "5. I saw the user being sad[7]" from the "memories" folder'),
+                   #openai_format('when selecting a wakeup/event the index is an integer DONT USE THE NAME'),
                   ]
 functions = [
     {
-        "name": "search_calander",
+        "name": "word_search_calander",
+        "description": "Searches calendar for a range from start to end",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "a phrase to be searched"
+                }
+            },
+            
+    }
+    },
+    {
+        "name": "range_search_calander",
         "description": "Searches calendar for a range from start to end",
         "parameters": {
             "type": "object",
             "properties": {
                 "start": {
-                    "type": ["object", "null"],
+                    "type": "object",
                     "description": "Start date and time in dict format"
                 },
                 "end": {
-                    "type": ["object", "null"],
+                    "type": "object",
                     "description": "End date and time in dict format"
                 }
             },
@@ -166,4 +180,4 @@ if __name__=='__main__':
     #print(openai_format('hi'))
     x=[openai_format('hi')]
     print(x)
-    #print(un_async(gpt_response(x)))
+    print(un_async(gpt_response(x)))

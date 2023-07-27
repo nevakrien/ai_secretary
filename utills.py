@@ -1,4 +1,5 @@
 import os
+import json
 import io
 import numpy as np 
 
@@ -73,3 +74,16 @@ def unix_from_ans(d,tz=None):
     if tz:
         ans=ans.astimezone(tz)
     return int(ans.timestamp())
+
+def search_key(folder,key,field='name'):
+    ans=[]
+    for s in os.listdir(folder):
+        path=os.path.join(folder,s)
+        if os.path.isdir(path):
+            ans.extend(search_key(path,key,field))
+        else:
+            with open(path) as f:
+                d=json.load(f)
+                if key in d[field]:
+                    ans.append(d)
+    return ans
