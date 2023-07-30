@@ -178,7 +178,7 @@ class Bot():
 				ans.append(openai_format(self.format_note(d,i),role='assistant'))
 		return ans
 
-	def format_folders(self,message, folders,source):
+	def format_folders(self, folders):
 		#tz=self.get_timezone()
 		#ans=self.format_time_dependent(wakeups,events)
 
@@ -188,32 +188,27 @@ class Bot():
 			ans+=self.format_folder(folder,name)
 			
 
-		ans.append(openai_format(f'{message}',role=source)) 
+		#ans.append(openai_format(f'{message}',role=source)) 
 
 		return ans
 
-	async def logic_step(self,time_inputs,folder_inputs,info,ans):
-		x,text,function_call=await self.ai_call[0](time_inputs+folder_inputs)
-		folder_inputs.append(x)
+	async def logic_step(self,message_input,time_inputs,folder_inputs,ans):
+		x,text,function_call=await self.ai_call[0](time_inputs+folder_inputs+message_input)
+		message_input.append(x)
 		if function_call:
 			try:
-				out= ans.funcs[function_call['name']](function_call['arguments'])
-				if out:
-					if function_call['name']=='range_search_calander':
-						ans.resolve_changes() 
-						info[2:4]=out
-						time_inputs=self.format_time_dependent(*info[2:4])
-						d=openai_format('sucessfuly changed the events at the top',role='function')
-						d['name']='range_search_calander'
-						folder_inputs.append(d)
-						ans=BotAnswer(self,info)
+				out= ans.funcs[function_call['name']](**function_call['arguments'])
+				message_input.append(out)
 
 			except Exception as e:
-				d=openai_format(f'error or type:{str(type(e))}: {str(e)}',role='function')
+				d=openai_format(f'error of type:{str(type(e))} error text: {str(e)}',role='function')
 				d['name']=function_call['name']
-				folder_inputs.append(d)
-				ans=BotAnswer(self,info)
-		return ans
+				message_input.append(d)
+			
+			return await self.logic_step(message_input,time_inputs,folder_inputs,ans)
+			
+		await ans.resolve_changes()
+		return text
 
 	async def session(self, message,source):
 	    await self.lock()
@@ -221,15 +216,17 @@ class Bot():
 	    #tz=await self.get_timezone()
 	    info=await self.get_info(message,t-s_in_d,t+s_in_d)
 	    ans=BotAnswer(self,info)
-	    folder_inputs=self.format_folders(*info[:2],source)
+	    message_input=[openai_format(message,role=source)]
+	    folder_inputs=self.format_folders(info[1])
 	    time_inputs=self.format_time_dependent(*info[2:4])
 	    
 	    if self.ai_call:
-	    	ans=await self.logic_step(time_inputs,folder_inputs,info,ans)
+	    	ans=await self.logic_step(message_input,time_inputs,folder_inputs,ans)
 	    	self.free()
-	    	return ans
+	    	delay = 10
+	    	return ans,delay
 	    else:
-	    	print('runing without ai calls')
+	    	print('runing without ai calls\n this is a legacty version')
 	    	delay = 10
 	    self.free()
 	    return ans,time_inputs+folder_inputs, delay
@@ -258,13 +255,18 @@ class BotAnswer():
 	def word_search_calander(self,key:str):
 		events=search_key(self.cal.curent,key)
 		wakes=search_key(self.wakeup.curent,key)
-		return events,wakes
+		ans= self.bot.format_time_dependent(events,wakes)
+		m=openai_format('searched wakeups and events',role='function')
+		return [m]+ans
+	
 	def range_search_calander(self,start:dict,end:dict):
 		start=unix_from_ans(start,self.tz)
 		end=unix_from_ans(end,self.tz)
 		events=self.cal.range_search(start,end) 
 		wakes=self.wakeup.range_search(start,end) 
-		return events,wakes
+		ans= self.bot.format_time_dependent(events,wakes)
+		m=openai_format('searched wakeups and events',role='function')
+		return [m]+ans
 
 	def modify_note(self,folder,idx,text=None,importance=None):
 		'''
@@ -278,17 +280,22 @@ class BotAnswer():
         '''
 		if text==None and importance==None:
 			self.note_info[folder][idx]=self.note_info[folder][idx]['idx']
-			return f'removed note {idx} from folder "{folder}"'
+			return [openai_format(f'removed note {idx} from folder "{folder}"',role='function')]
 
 		if idx==None:
 			self.new_notes[folder].append({'text':text,'importance':importance})
-			return f'added a new note to folder "{folder}"'
+			return [openai_format(f'added a new note to folder "{folder}"',role='function')]
 		
 		d=self.note_info[folder][idx]
+		#s=''
 		if text!=None:
 			d['text']=text
+			#s+=f"text: {text}"
 		if importance!=None:
 			d['importance']=importance
+			#s+=f"importance: {importance}"
+
+		return [openai_format(f'modified note {idx} in folder "{folder}"',role='function')]
 	
 	def modify_wakeup(self,idx,name=None,time=None,message=None):
 		'''
@@ -296,19 +303,17 @@ class BotAnswer():
         if idx is zero make a new one
 
         if the no change is passed this will delete the entry
-
-        impotance should be an int 
-        and folder should be in ['user profile', 'goals', 'memories', 'reflections']
         '''
 		if time==None and name==None and message==None:
 			self.wake_info[idx]=[self.wake_info[idx]['idx'],self.wake_info[idx]['time']]
-			return
+			return [openai_format(f'canceled wakeup {idx}',role='function')]
 
 		if idx==None:
 			self.new_wakeups.append({'name':name,'message':message,'time':unix_from_ans(time)})
-			return
+			return [openai_format(f'scedualed wakeup at"{time}"',role='function')]
 		
 		d=self.self.wake_info[idx]
+
 		if name!=None:
 			d['name']=name
 		if message!=None:
@@ -316,26 +321,31 @@ class BotAnswer():
 		if time!=None:
 			d['time']=unix_from_ans(time)
 
-	def modify_event(self,idx,d):
+		return [openai_format(f'modified wakeup {idx} name: "{d["name"]}"',role='function')]
+
+	def modify_event(self, idx, d):
 		'''
 		expects either a dict with ['start','end','name'] or None
 		if None is passed will delete the entry
 		'''
-		if d!=None:
-			d['start']=unix_from_ans(d['start'])
-			d['end']=unix_from_ans(d['end'])
-			
+		if d != None:
+		    d['start'] = unix_from_ans(d['start'], self.tz)
+		    d['end'] = unix_from_ans(d['end'], self.tz)
+		    
+		    if idx == None:
+		        self.new_events.append(d)
+		        return [openai_format('added new event', role='function')]
+
+		    self.event_info[idx] = d
+		    return [openai_format(f'modified event {idx}', role='function')]
+		    
 		else: 
-			d=self.event_info[idx]
-			d=[d['idx'],d['start']]
+		    d = self.event_info[idx]
+		    self.event_info[idx] = [d['idx'], d['start']]
+		    return [openai_format(f'removed event {idx}', role='function')]
 
-		if idx==None:
-			self.new_events.append(d)
-			return 
 
-		self.event_info[idx]=d
-
-	def resolve_changes(self):
+	async def resolve_changes(self):
 		#new
 		for k,v in self.new_notes.items():
 			folder=self.folders[k]
@@ -349,7 +359,7 @@ class BotAnswer():
 		#this need to be gathered and ran later
 		add_tasks=[self.wakeup.add(d) for d in self.new_wakeups]
 		#asyncio.run()
-		un_async(asyncio.gather(*add_tasks))
+		#task=asyncio.create_task(asyncio.gather(*add_tasks))
 
 		#modify
 		for k,v in self.note_info.items():
@@ -361,6 +371,7 @@ class BotAnswer():
 					#print(d)
 					d['viewed']+=1
 					d.pop('embed')
+
 					folder._modify(d['idx'],d)
 
 		for d in self.event_info:
@@ -378,6 +389,9 @@ class BotAnswer():
 			else:
 				d.pop('embed')
 				self.wakeup.modify(d['idx'],d['time'],d)
+	
+		await asyncio.gather(*add_tasks)
+
 class AIPupet():
 	api_calls=[{
     'role': 'assistant', 
@@ -426,7 +440,7 @@ class AIPupet():
 },
 {
     'role': 'assistant',
-    'content': 'I will remove the text and importance from that note.',
+    'content': None,
     'function_call': {
         'name': 'modify_note',
         'arguments': {
@@ -458,7 +472,7 @@ class AIPupet():
 },
 {
     'role': 'assistant',
-    'content': 'I will modify that note for you.',
+    'content':None,
     'function_call': {
         'name': 'modify_note',
         'arguments': {
@@ -469,7 +483,11 @@ class AIPupet():
         }
     }
 },
-
+{
+    'role': 'assistant',
+    'content': 'filler',
+    'function_call': None
+},
 
 ]
 	def __init__(self):
@@ -477,7 +495,7 @@ class AIPupet():
 	async def __call__(self,m):
 		x=self.api_calls[self.idx]
 		self.idx+=1
-		print(m)
+		print(f'got message: {m}\n{100*"-"}\n\n\n')
 		return x,x.get('content'),x.get("function_call")
 
 
@@ -495,8 +513,9 @@ if __name__=='__main__':
 	Bot.init_debug_embed('lol_hash') 
 	bot.init_gpt_func(pupet)
 
-	x=un_async(bot.respond_to_message('HI'))
-	print(x)
+	while pupet.idx<len(pupet.api_calls):
+		x=un_async(bot.respond_to_message('HI'))
+		print(x)
 
 	legacy_test=True
 	if legacy_test:
@@ -560,7 +579,7 @@ if __name__=='__main__':
 		response[0].modify_wakeup(None, time={'year': 2023, 'month': 1, 'day': 2, 'hour': 2, 'minute': 0},
 		                          message='stuff', name='wakeup')
 
-		response[0].resolve_changes()
+		un_async(response[0].resolve_changes())
 
 		print(bot.prof[0])
 		print(bot.cal.get_next())
