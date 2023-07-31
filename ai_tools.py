@@ -72,20 +72,28 @@ async def get_embedding(text, model="text-embedding-ada-002"):
    x= await openai.Embedding.acreate(input = [text], model=model)
    return np.array(x['data'][0]['embedding'])
 
-async def gpt_response(messages,model='gpt-3.5-turbo',full=False):
-	#input validation
-	for m in messages:
-		assert m['role'] in alowed_roles
-		if m['role']=='function':
-			assert 'name' in m.keys()
-		assert 'content' in m.keys()
+async def gpt_response(messages, model='gpt-3.5-turbo', full=False):
+    # Input validation
+    try:
+        for m in messages:
+            assert m['role'] in alowed_roles
+            if m['role'] == 'function':
+                assert 'name' in m.keys()
+            assert 'content' in m.keys()
+    except Exception as e:
+        print(messages)
+        raise e
 
-	x=await openai.ChatCompletion.acreate(model=model,messages=messages,functions=functions)
-	if full:
-		return x
-	#print(x)	
-	x=x["choices"][0]["message"]
-	return x,x.get('content'),x.get("function_call")
+    x = await openai.ChatCompletion.acreate(model=model, messages=messages, functions=functions)
+    if full:
+        return x
+    # print(x)
+    return extract_message(x)
+
+
+def extract_message(x):
+    x=x["choices"][0]["message"]
+    return x,x.get('content'),x.get("function_call")
 
 alowed_roles=('system','user','assistant','function')
 

@@ -18,6 +18,7 @@ import time
 import pytz 
 
 import numpy as np
+import json
 
 class Bot():
 	ai_call=None
@@ -227,6 +228,9 @@ class Bot():
 	async def logic_step(self,message_input,time_inputs,folder_inputs,ans):
 		x,text,function_call=await self.ai_call[0](self.get_start_prompt()+time_inputs+folder_inputs+message_input+self.get_base_messages())
 		message_input.append(x)
+		if text:
+			await self._send_message(text)
+
 		if function_call:
 			try:
 				out= ans.funcs[function_call['name']](**json.loads(function_call['arguments']))	
@@ -236,12 +240,13 @@ class Bot():
 				d=openai_format(f'error of type:{str(type(e))} error text: {str(e)}',role='function')
 				d['name']=function_call['name']
 				message_input.append(d)
+				message_input.append(openai_format('IMPORTANT: your last function call errored, please validate that your inputs are in the corect format'))
 			
 			return await self.logic_step(message_input,time_inputs,folder_inputs,ans)
 			
 		await ans.resolve_changes()
 		#return text
-		await self._send_message(text)
+		
 
 		delay = s_in_d 
 		prompt = 'its been a day'
@@ -316,7 +321,7 @@ class BotAnswer():
 		m=openai_format('searched wakeups and events',role='function')
 		return [m]+ans
 
-	def modify_note(self,folder,idx,text=None,importance=None):
+	def modify_note(self,folder,idx=None,text=None,importance=None):
 		'''
         changes note number idx in folder 
         if idx is zero make a new one
@@ -345,7 +350,7 @@ class BotAnswer():
 
 		return [openai_format(f'modified note {idx} in folder "{folder}"',role='function')]
 	
-	def modify_wakeup(self,idx,name=None,time=None,message=None):
+	def modify_wakeup(self,idx=None,name=None,time=None,message=None):
 		'''
         changes wakeup number idx in folder 
         if idx is zero make a new one
@@ -371,7 +376,7 @@ class BotAnswer():
 
 		return [openai_format(f'modified wakeup {idx} name: "{d["name"]}"',role='function')]
 
-	def modify_event(self, idx, d):
+	def modify_event(self, idx=None, d=None):
 		'''
 		expects either a dict with ['start','end','name'] or None
 		if None is passed will delete the entry
@@ -441,103 +446,80 @@ class BotAnswer():
 		await asyncio.gather(*add_tasks)
 
 class AIPupet():
-	api_calls=[{
-    'role': 'assistant', 
-    'content': None, 
-    'function_call': {
-        'name': 'range_search_calander', 
-        'arguments': {
-            'start': {
-                'year': 2023,
-                'month': 6,
-                'day': 1
-            },
-            'end': {
-                'year': 2023,
-                'month': 6,
-                'day': 30
-            }
+	api_calls = [
+    {
+        'role': 'assistant',
+        'content': None,
+        'function_call': {
+            'name': 'range_search_calander',
+            'arguments': '{"start": {"year": 2023, "month": 6, "day": 1}, "end": {"year": 2023, "month": 6, "day": 30}}'
         }
-    }
-},
-{
-    'role': 'assistant', 
-    'content': None, 
-    'function_call': {
-        'name': 'modify_note', 
-        'arguments': {
-            'folder': 'memories',
-            'idx': None,
-            'text': 'Visit grandma',
-            'importance': 5
+    },
+    {
+        'role': 'assistant',
+        'content': None,
+        'function_call': {
+            'name': 'modify_note',
+            'arguments': '{"folder": "memories", "idx": null, "text": "Visit grandma", "importance": 5}'
         }
-    }
-},
-{
-    'role': 'assistant',
-    'content': 'I will remove the text and importance from that note.',
-    'function_call': {
-        'name': 'modify_note',
-        'arguments': {
-            'folder': 'memories',
-            'idx': 0,
-            'text': 'changed',
-            'importance': None
+    },
+    {
+        'role': 'assistant',
+        'content': 'I will remove the text and importance from that note.',
+        'function_call': {
+            'name': 'modify_note',
+            'arguments': '{"folder": "memories", "idx": 0, "text": "changed", "importance": null}'
         }
-    }
-},
-{
-    'role': 'assistant',
-    'content': None,
-    'function_call': {
-        'name': 'modify_note',
-        'arguments': {
-            'folder': 'memories',
-            'idx': 0,
-            'text': None,
-            'importance': 100
+    },
+    {
+        'role': 'assistant',
+        'content': None,
+        'function_call': {
+            'name': 'modify_note',
+            'arguments': '{"folder": "memories", "idx": 0, "text": null, "importance": 100}'
         }
-    }
-},
-
-{
-    'role': 'assistant',
-    'content': 'I will remove the text and importance from that note.',
-    'function_call': {
-        'name': 'modify_note',
-        'arguments': {
-            'folder': 'memories',
-            'idx': 2,
-            'text': None,
-            'importance': None
+    },
+    {
+        'role': 'assistant',
+        'content': 'I will remove the text and importance from that note.',
+        'function_call': {
+            'name': 'modify_note',
+            'arguments': '{"folder": "memories", "idx": 2, "text": null, "importance": null}'
         }
-    }
-},
-{
-    'role': 'assistant',
-    'content': 'I am afraid I can only search within specific date ranges.',
-    'function_call': None
-},
-{
-    'role': 'assistant',
-    'content':None,
-    'function_call': {
-        'name': 'modify_note',
-        'arguments': {
-            'folder': 'memories',
-            'idx': 2,
-            'text': 'Visit grandma',
-            'importance': 5
+    },
+    {
+        'role': 'assistant',
+        'content': 'I am afraid I can only search within specific date ranges.',
+        'function_call': None
+    },
+    {
+        'role': 'assistant',
+        'content': None,
+        'function_call': {
+            'name': 'modify_note',
+            'arguments': '{"folder": "memories", "idx": 2, "text": "Visit grandma", "importance": 5}'
         }
-    }
-},
-{
-    'role': 'assistant',
-    'content': 'filler',
-    'function_call': None
-},
-
+    },
+    {
+        'role': 'assistant',
+        'content': 'filler',
+        'function_call': None
+    },
+    {
+        'role': 'assistant',
+        'content': None,
+        'function_call': {
+            'name': 'modify_event',
+            'arguments': '{"d": {"name": "Laundry", "start": {"year": 2023, "month": 8, "day": 1, "hour": 10, "minute": 0}, "end": {"year": 2023, "month": 8, "day": 1, "hour": 11, "minute": 0}}}'
+        }
+    },
+    {
+        'role': 'assistant',
+        'content': 'filler',
+        'function_call': None
+    },
 ]
+
 	def __init__(self):
 		self.idx=0
 	async def __call__(self,m):
@@ -565,7 +547,7 @@ if __name__=='__main__':
 		x=un_async(bot.respond_to_message('HI'))
 		print(x)
 
-	legacy_test=True
+	legacy_test=False
 	if legacy_test:
 		
 		bot.ai_call=None

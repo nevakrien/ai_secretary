@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 
 from server import tel_main,Conversation_Manager,FolowUpCalls,Responder,send_message,log_update
 from bot_logic import Bot 
-from ai_tools import gpt_response,RateLimitedAPICall,LogAPICall
+from ai_tools import gpt_response,RateLimitedAPICall,LogAPICall,extract_message
 from calander import WakeupManager,s_in_d
 #remember to overwrite the wakeup WakeupHook 
 
@@ -108,11 +108,16 @@ if __name__ == "__main__":
 
 	openai.api_key=ai
 
-	call=RateLimitedAPICall(gpt_response,3,60)
+	call=RateLimitedAPICall(lambda t:gpt_response(t,full=True),3,60)
 	call=RateLimitedAPICall(call,10,5*60)
 	call=RateLimitedAPICall(call,100,s_in_d)
 	call=LogAPICall(call,'GPT_Calls')
-	Bot.init_gpt_func(call)
+	async def call2(x):
+		x=await call(x)
+		return extract_message(x)
+	#call=lambda x:extract_message(x)
+	#return x,x.get('content'),x.get("function_call")
+	Bot.init_gpt_func(call2)
 	Bot.init_embed('text-embedding-ada-002') 
 
 	async def start(bot,user_id,user):

@@ -6,4 +6,4 @@ post crash initiliation may mess the order of messages giving a diffrent answer
 
 TODO:
 add length constraints and checks for the input 
-remove the halusinations made from the autocomplete behvior
+remove the halusinations made from the autocomplete behvior	
