@@ -40,12 +40,44 @@ class Bot():
 		self.mem=MemoryFolder(join(path,'memories'),new=new)
 		self.prof=MemoryFolder(join(path,'user profile'),new=new)
 		self.ref=MemoryFolder(join(path,'reflections'),new=new)
-    
+	def get_now(self):
+		return datetime.now(self.tz).strftime("%Y-%m-%d %H:%M")
+	
+	def get_start_prompt(self):
+		return [
+			openai_format(f'you are a secratery and the curent time is {self.get_now()}'),
+                   openai_format('''at your disposal you have 3 diffrent system: 
+                   calander that keeps events wakeup manager that alows you to scedual runing sessions for yourself and a note system with 4 folders'''),
+                   openai_format('wakeups are times where you are called with a wakeup message and you can then preform actions'),
+                   openai_format('events usually represent tasks that should be completed by the user'),
+		]
+
+	def get_base_messages(self):
+		return [
+			
+          openai_format('IMPORTANT: when passing in datetimes to functions make sure to only use the alowed keywords and integers inside of a dict clearly stating their purpose for exmple: {year:2000,month:3,day:5,hour:23,minute:3}'),
+          openai_format('modify event only takes "start" and "end" as its time arguments and modify wakeup takes only "time" as its time argument'),
+                   #openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_event(idx=5) will remove: "5. wedding; start: 2023-07-20 21:06; end:2023-07-20 23:06"'),
+                  openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_note(idx=5,folder="memories") will remove event "5. I saw the user being sad[7]" from the "memories" folder'),
+                   #openai_format('when selecting a wakeup/event the index is an integer DONT USE THE NAME'),
+                  ]
+
+	async def send_message(self,message):
+		print('sending message')
+		print(message)
+
+	async def _send_message(self,message):
+		t=datetime.now(self.tz).strftime('%Y-%m-%d %H:%M')
+		self.mem.add(f'at: {t} I said: "{message}"')
+		await self.send_message(message)
+		
+	
 	async def lock(self):
 		await self.semaphore.acquire()
 
 	def free(self):
 		self.semaphore.release()
+
 
 	def set_timezone(self,tz):
 		self.tz=pytz.timezone(tz)
@@ -193,11 +225,11 @@ class Bot():
 		return ans
 
 	async def logic_step(self,message_input,time_inputs,folder_inputs,ans):
-		x,text,function_call=await self.ai_call[0](time_inputs+folder_inputs+message_input)
+		x,text,function_call=await self.ai_call[0](self.get_start_prompt()+time_inputs+folder_inputs+message_input+self.get_base_messages())
 		message_input.append(x)
 		if function_call:
 			try:
-				out= ans.funcs[function_call['name']](**function_call['arguments'])
+				out= ans.funcs[function_call['name']](**json.loads(function_call['arguments']))	
 				message_input.append(out)
 
 			except Exception as e:
@@ -208,7 +240,12 @@ class Bot():
 			return await self.logic_step(message_input,time_inputs,folder_inputs,ans)
 			
 		await ans.resolve_changes()
-		return text
+		#return text
+		await self._send_message(text)
+
+		delay = s_in_d 
+		prompt = 'its been a day'
+		return prompt,delay
 
 	async def session(self, message,source):
 	    await self.lock()
@@ -221,9 +258,9 @@ class Bot():
 	    time_inputs=self.format_time_dependent(*info[2:4])
 	    
 	    if self.ai_call:
-	    	ans=await self.logic_step(message_input,time_inputs,folder_inputs,ans)
+	    	ans,delay=await self.logic_step(message_input,time_inputs,folder_inputs,ans)
 	    	self.free()
-	    	delay = 10
+	    	
 	    	return ans,delay
 	    else:
 	    	print('runing without ai calls\n this is a legacty version')
@@ -233,6 +270,17 @@ class Bot():
 	
 	async def respond_to_message(self, message):
 		return await self.session(message,source='user')
+
+	async def do_wakeup(self,name, message):
+		text=f'wakeup "{name}":\n{message}'
+		return await self.session(text,source='assistant')
+
+	async def ping_wakeup(self, message,error=False):
+		text=f'auto wakeup :\n{message}'
+		if error: 
+			text=f'Server error delayed auto wakeup :\n{message}'
+		return await self.session(text,source='assistant')
+
 
 class BotAnswer():
 	def __init__(self,bot,info):

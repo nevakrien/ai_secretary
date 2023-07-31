@@ -291,10 +291,11 @@ class Conversation_Manager():
 
 
 
-def tel_main(tel,response,reminder,errored_reminder,start) -> None:
+#def tel_main(tel,response,reminder,errored_reminder,start) -> None:
     """Start the bot."""
-    responder=Responder(response,reminder,errored_reminder,start)
-    FolowUpCalls.set_func(reminder)
+    #responder=Responder(response,reminder,errored_reminder,start)
+def tel_main(tel,responder) -> None:
+    FolowUpCalls.set_func(responder.wrapped_reminder)
 
     application = Application.builder().token(tel).post_init(responder.initialize_tasks).build()
     
@@ -305,7 +306,7 @@ def tel_main(tel,response,reminder,errored_reminder,start) -> None:
 
 if __name__ == "__main__":
 
-    thread_count=0
+    #thread_count=0
     print('started server')
     with open('secrets') as f:
         tel,ai=tuple(f.read().split('\n'))[:2]
@@ -359,4 +360,7 @@ if __name__ == "__main__":
     async def start(bot,user_id,user):
         await send_message(bot,user_id,f'hi {user.name}')
 
-    tel_main(tel,start=start,response=response,errored_reminder=errored_reminder,reminder=reminder)
+    responder=Responder(response,reminder,errored_reminder,start)
+    print('tel server')
+    tel_main(tel,responder)
+    #tel_main(tel,start=start,response=response,errored_reminder=errored_reminder,reminder=reminder)

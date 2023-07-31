@@ -43,7 +43,7 @@ def max_co_occur(events,interval:int):
 def min_max_scale(x):
     x=np.array(x)
     x-=x.min(0)
-    x/=x.max(0)
+    x/=x.max(0)+0.1 #eww I am gona puke
     return x.mean(1) 
 
 def un_async(func):
