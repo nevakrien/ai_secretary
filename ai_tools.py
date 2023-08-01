@@ -72,17 +72,19 @@ async def get_embedding(text, model="text-embedding-ada-002"):
    x= await openai.Embedding.acreate(input = [text], model=model)
    return np.array(x['data'][0]['embedding'])
 
+def Input_validation(messages):
+    #try:
+    for m in messages:
+        assert m['role'] in alowed_roles
+        if m['role'] == 'function':
+            assert 'name' in m.keys()
+        assert 'content' in m.keys()
+    #except Exception as e:
+        #print(messages)
+        #raise e
+
 async def gpt_response(messages, model='gpt-3.5-turbo', full=False):
-    # Input validation
-    try:
-        for m in messages:
-            assert m['role'] in alowed_roles
-            if m['role'] == 'function':
-                assert 'name' in m.keys()
-            assert 'content' in m.keys()
-    except Exception as e:
-        print(messages)
-        raise e
+    Input_validation(messages)
 
     x = await openai.ChatCompletion.acreate(model=model, messages=messages, functions=functions)
     if full:
@@ -180,26 +182,19 @@ functions = [
                         "type": ["integer", "null"],
                         "description": "Index of the event. Pass None for a new event."
                     },
-                    "d": {
+                    "start": {
                         "type": ["object", "null"],
-                        "description": "Event details. Pass None for deletion.",
-                        "properties": {
-                            "start": {
-                                "type": ["object", "null"],
-                                "description": f"Start date Pass None if no change is required."
-                            },
-                            "end": {
-                                "type": ["object", "null"],
-                                "description": f"End date Pass None if no change is required."
-                            },
-                            "name": {
-                                "type": ["string", "null"],
-                                "description": "Event name. Pass None if no change is required."
-                            }
-                        },
-                        "required": ["start", "end", "name"],
-                        "additionalProperties": False
+                        "description": f"Start date Pass None if no change is required."
+                    },
+                    "end": {
+                        "type": ["object", "null"],
+                        "description": f"End date Pass None if no change is required."
+                    },
+                    "name": {
+                        "type": ["string", "null"],
+                        "description": "Event name. Pass None if no change is required."
                     }
+                      
                 },
                 "additionalProperties": False
             }
@@ -249,7 +244,7 @@ if __name__=='__main__':
     #print(openai_format('hi'))
     x=[openai_format('hi')]
     print(x)
-    #print(un_async(gpt_response(x)))
+    print(un_async(gpt_response(x)))
     async def filler(x):
         return openai_format('XXX')
     rate_limiter = RateLimitedAPICall(filler,5)  # allow up to 5 calls per second

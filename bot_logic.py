@@ -3,7 +3,7 @@ from memory import MemoryFolder
 from embedding import Lazy_embed #this one will be the debug version 
 #from server import Conversation_Manager
 
-from ai_tools import gpt_response
+from ai_tools import gpt_response,Input_validation
 
 from utills import min_max_scale,string_from_unix,openai_format,unix_from_ans,search_key
 
@@ -45,23 +45,28 @@ class Bot():
 		return datetime.now(self.tz).strftime("%Y-%m-%d %H:%M")
 	
 	def get_start_prompt(self):
-		return [
-			openai_format(f'you are a secratery and the curent time is {self.get_now()}'),
-                   openai_format('''at your disposal you have 3 diffrent system: 
-                   calander that keeps events wakeup manager that alows you to scedual runing sessions for yourself and a note system with 4 folders'''),
-                   openai_format('wakeups are times where you are called with a wakeup message and you can then preform actions'),
-                   openai_format('events usually represent tasks that should be completed by the user'),
-		]
+	    return [openai_format(f'''
+	As a diligent secretary, you find yourself in the current time of {self.get_now()}.
 
-	def get_base_messages(self):
-		return [
-			
-          openai_format('IMPORTANT: when passing in datetimes to functions make sure to only use the alowed keywords and integers inside of a dict clearly stating their purpose for exmple: {year:2000,month:3,day:5,hour:23,minute:3}'),
-          openai_format('modify event only takes "start" and "end" as its time arguments and modify wakeup takes only "time" as its time argument'),
-                   #openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_event(idx=5) will remove: "5. wedding; start: 2023-07-20 21:06; end:2023-07-20 23:06"'),
-                  openai_format('if you want to delete an event/wakeup/note make sure to pass JUST ITS INDEX (and folder for notes) so modify_note(idx=5,folder="memories") will remove event "5. I saw the user being sad[7]" from the "memories" folder'),
-                   #openai_format('when selecting a wakeup/event the index is an integer DONT USE THE NAME'),
-                  ]
+	You have been equipped with three key systems to efficiently manage your tasks: 
+	- A calendar to track and manage events
+	- A wake-up manager for scheduling self-running sessions
+	- A note system divided into four categorized folders
+
+	Your wake-ups are specific times when you receive a wake-up message and can then execute specific actions. Your events typically represent tasks that the user needs to accomplish.
+
+	IMPORTANT REMINDER: It is crucial to center all interactions on the user's needs. Information should only be presented based on what is known about the user. Avoid speculation and maintain a human element throughout all exchanges.
+	''')]
+
+	def get_end_prompt(self):
+	    return [openai_format(f'''
+	IMPORTANT: When supplying datetimes to functions, ensure that you exclusively use the permitted keywords and integers contained within a dictionary. Each entry should explicitly state its purpose, for instance: {{year:2000, month:3, day:5, hour:23, minute:3}}.
+
+	Please note that the "modify event" function only accepts "start" and "end" as time arguments, while the "modify wakeup" function only takes "time" as its time argument.
+
+	Should you need to delete an event, wake-up, or note, you must only supply ITS INDEX (and folder for notes). For instance, calling modify_note(idx=5,folder="memories") will remove note "5. I saw the user being sad[7]" from the "memories" folder.
+	''')]
+
 
 	async def send_message(self,message):
 		print('sending message')
@@ -226,7 +231,7 @@ class Bot():
 		return ans
 
 	async def logic_step(self,message_input,time_inputs,folder_inputs,ans):
-		x,text,function_call=await self.ai_call[0](self.get_start_prompt()+time_inputs+folder_inputs+message_input+self.get_base_messages())
+		x,text,function_call=await self.ai_call[0](self.get_start_prompt()+time_inputs+folder_inputs+message_input+self.get_end_prompt())
 		message_input.append(x)
 		if text:
 			await self._send_message(text)
@@ -234,14 +239,21 @@ class Bot():
 		if function_call:
 			try:
 				out= ans.funcs[function_call['name']](**json.loads(function_call['arguments']))	
-				message_input.append(out)
+				for d in out:
+					if d['role']=='function':
+						d['name']=function_call['name']
+				message_input+=out
+				print(f"good function call: {function_call['name']}")
 
 			except Exception as e:
 				d=openai_format(f'error of type:{str(type(e))} error text: {str(e)}',role='function')
 				d['name']=function_call['name']
 				message_input.append(d)
 				message_input.append(openai_format('IMPORTANT: your last function call errored, please validate that your inputs are in the corect format'))
-			
+				print('bad function call raising error')
+				#raise e
+
+			await ans.resolve_changes() #for debuging only so when it gets caught in an error loop I can abord and see the state
 			return await self.logic_step(message_input,time_inputs,folder_inputs,ans)
 			
 		await ans.resolve_changes()
@@ -376,26 +388,35 @@ class BotAnswer():
 
 		return [openai_format(f'modified wakeup {idx} name: "{d["name"]}"',role='function')]
 
-	def modify_event(self, idx=None, d=None):
+	def modify_event(self, idx=None, start=None, end=None, name=None):
 		'''
-		expects either a dict with ['start','end','name'] or None
-		if None is passed will delete the entry
+		Expects start, end, and name as separate arguments.
+		If all are None, it will delete the entry.
+		If there is a mix of defined and undefined among start, end, and name, it will return an error.
 		'''
-		if d != None:
-		    d['start'] = unix_from_ans(d['start'], self.tz)
-		    d['end'] = unix_from_ans(d['end'], self.tz)
-		    
-		    if idx == None:
-		        self.new_events.append(d)
-		        return [openai_format('added new event', role='function')]
+		# Check for a mix of defined and undefined among start, end, and name
+		params = [start, end, name]
+		if params.count(None) not in [0, 3]:  # either all or none should be None
+		    return [openai_format('IMPORTANT: Failed to execute. Either all of start, end, and name should be defined, or all should be None.', role='function')]
 
-		    self.event_info[idx] = d
-		    return [openai_format(f'modified event {idx}', role='function')]
-		    
-		else: 
-		    d = self.event_info[idx]
-		    self.event_info[idx] = [d['idx'], d['start']]
-		    return [openai_format(f'removed event {idx}', role='function')]
+		if start is not None and end is not None and name is not None:
+		    start = unix_from_ans(start, self.tz)
+		    end = unix_from_ans(end, self.tz)
+		    event_data = {'start': start, 'end': end, 'name': name,'idx':self.event_info[idx]['idx']}
+
+		    if idx is None:
+		        self.new_events.append(event_data)
+		        return [openai_format('Added new event.', role='function')]
+
+		    self.event_info[idx] = event_data
+		    return [openai_format(f'Modified event {idx}.', role='function')]
+
+		else:
+		    if idx is not None:
+		        d = self.event_info[idx]
+		        self.event_info[idx] = [d['idx'], d['start']]
+		        return [openai_format(f'Removed event {idx}.', role='function')]
+
 
 
 	async def resolve_changes(self):
@@ -423,7 +444,10 @@ class BotAnswer():
 				else:
 					#print(d)
 					d['viewed']+=1
-					d.pop('embed')
+					try:
+						d.pop('embed')
+					except KeyError:
+						pass
 
 					folder._modify(d['idx'],d)
 
@@ -432,7 +456,10 @@ class BotAnswer():
 				#print('del')
 				self.cal.modify(d[0],d[1])
 			else:
-				d.pop('embed')
+				try:
+						d.pop('embed')
+				except KeyError:
+					pass
 				self.cal.modify(d['idx'],d['start'],d)
 
 		for d in self.wake_info:
@@ -440,7 +467,10 @@ class BotAnswer():
 				#print('del')
 				self.wakeup.modify(d[0],d[1])
 			else:
-				d.pop('embed')
+				try:
+						d.pop('embed')
+				except KeyError:
+					pass
 				self.wakeup.modify(d['idx'],d['time'],d)
 	
 		await asyncio.gather(*add_tasks)
@@ -510,7 +540,7 @@ class AIPupet():
         'content': None,
         'function_call': {
             'name': 'modify_event',
-            'arguments': '{"d": {"name": "Laundry", "start": {"year": 2023, "month": 8, "day": 1, "hour": 10, "minute": 0}, "end": {"year": 2023, "month": 8, "day": 1, "hour": 11, "minute": 0}}}'
+            'arguments': '{"name": "Laundry", "start": {"year": 2023, "month": 8, "day": 1, "hour": 10, "minute": 0}, "end": {"year": 2023, "month": 8, "day": 1, "hour": 11, "minute": 0}'
         }
     },
     {
@@ -523,6 +553,18 @@ class AIPupet():
 	def __init__(self):
 		self.idx=0
 	async def __call__(self,m):
+		for m1 in m:
+			#print(type(m1))
+			if type(m1)!=dict:
+				print(m1)
+				print(len(m))
+		try:
+			Input_validation(m)
+		except Exception as e:
+			for m1 in m:
+				print(f"{m1.keys()} {m1['role']}")
+			raise e
+
 		x=self.api_calls[self.idx]
 		self.idx+=1
 		print(f'got message: {m}\n{100*"-"}\n\n\n')
