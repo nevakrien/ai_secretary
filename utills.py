@@ -6,6 +6,7 @@ import numpy as np
 import asyncio
 
 from datetime import datetime
+from dateutil.parser import parse
 
 def write_int_to_file(filename, number):
     with open(filename, "wb") as f:
@@ -69,10 +70,19 @@ def contains_all_fields(dictionary, fields):
 def openai_format(text,role='system'):
     return {'role':role,'content':text}
 
-def unix_from_ans(d,tz=None):
-    ans=datetime(**d)
+def unix_from_ans(dt_input, tz=None):
+    if isinstance(dt_input, dict):
+        ans = datetime(**dt_input)
+    elif isinstance(dt_input, str):
+        ans = parse(dt_input)
+    else:
+        raise ValueError("Input must be a dictionary or a string")
+
     if tz:
-        ans=ans.astimezone(tz)
+        if isinstance(tz, str):
+            tz = pytz.timezone(tz)
+        ans = ans.astimezone(tz)
+
     return int(ans.timestamp())
 
 def search_key(folder,key,field='name'):
@@ -87,3 +97,10 @@ def search_key(folder,key,field='name'):
                 if key in d[field]:
                     ans.append(d)
     return ans
+
+if __name__=='__main__':
+    unix_from_ans({'year': 2023, 'month': 8, 'day': 1, 'hour': 17, 'minute': 11})
+    unix_from_ans('2023-08-01 17:11')
+    unix_from_ans('2023-08-01T17:11:00Z')
+    unix_from_ans('August 1, 2023 17:11:00')
+    print(unix_from_ans("2023-08-02 10:00"))

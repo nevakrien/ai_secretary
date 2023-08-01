@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
 	openai.api_key=ai
 
-	call=RateLimitedAPICall(lambda t:gpt_response(t,full=True),3,60)
+	call=RateLimitedAPICall(lambda t:gpt_response(t,full=True),3,10)
 	call=RateLimitedAPICall(call,10,5*60)
 	call=RateLimitedAPICall(call,100,s_in_d)
 	call=LogAPICall(call,'GPT_Calls')

@@ -56,16 +56,24 @@ class Bot():
 	Your wake-ups are specific times when you receive a wake-up message and can then execute specific actions. Your events typically represent tasks that the user needs to accomplish.
 
 	IMPORTANT REMINDER: It is crucial to center all interactions on the user's needs. Information should only be presented based on what is known about the user. Avoid speculation and maintain a human element throughout all exchanges.
+
+	Furthermore, your responses should prioritize brevity and directness. To keep interactions user-friendly, aim to respond promptly with clear, concise text to user inputs. Long, complex thought processes and excessive function calling should be avoided. Sessions are considered complete when no additional functions are called. Stay focused on resolving the user's needs swiftly and efficiently.
 	''')]
+
 
 	def get_end_prompt(self):
 	    return [openai_format(f'''
-	IMPORTANT: When supplying datetimes to functions, ensure that you exclusively use the permitted keywords and integers contained within a dictionary. Each entry should explicitly state its purpose, for instance: {{year:2000, month:3, day:5, hour:23, minute:3}}.
+	Remember, when managing datetimes, always use the allowed keywords and integers within a dictionary, clearly stating their purpose. For example: {{year:2000, month:3, day:5, hour:23, minute:3}}.
 
-	Please note that the "modify event" function only accepts "start" and "end" as time arguments, while the "modify wakeup" function only takes "time" as its time argument.
+	When modifying an event, only "start" and "end" should be used as time arguments. Meanwhile, when modifying a wakeup, only "time" should be your time argument.
 
-	Should you need to delete an event, wake-up, or note, you must only supply ITS INDEX (and folder for notes). For instance, calling modify_note(idx=5,folder="memories") will remove note "5. I saw the user being sad[7]" from the "memories" folder.
+	To delete an event, wakeup, or note, simply pass JUST ITS INDEX (and folder for notes). For instance, modify_note(idx=5, folder="memories") will remove the event "5. I saw the user being sad[7]" from the "memories" folder.
+
+	VERY IMPORTANT: Always aim to conclude your interactions by sending a text response to the user, affirming the reception and execution of their input. This not only confirms the successful communication but also provides a personal touch that enhances the user experience. Moreover, try to see things from the user's perspective and anticipate their needs - it's the essence of great assistance.
+
+	With these guidelines, your interactions will be effective, efficient, and user-friendly.
 	''')]
+
 
 
 	async def send_message(self,message):
@@ -243,17 +251,17 @@ class Bot():
 					if d['role']=='function':
 						d['name']=function_call['name']
 				message_input+=out
-				print(f"good function call: {function_call['name']}")
+				#print(f"good function call: {function_call['name']}")
 
 			except Exception as e:
 				d=openai_format(f'error of type:{str(type(e))} error text: {str(e)}',role='function')
 				d['name']=function_call['name']
 				message_input.append(d)
 				message_input.append(openai_format('IMPORTANT: your last function call errored, please validate that your inputs are in the corect format'))
-				print('bad function call raising error')
+				#print('bad function call raising error')
 				#raise e
 
-			await ans.resolve_changes() #for debuging only so when it gets caught in an error loop I can abord and see the state
+			#await ans.resolve_changes() #for debuging only so when it gets caught in an error loop I can abord and see the state
 			return await self.logic_step(message_input,time_inputs,folder_inputs,ans)
 			
 		await ans.resolve_changes()
@@ -402,12 +410,13 @@ class BotAnswer():
 		if start is not None and end is not None and name is not None:
 		    start = unix_from_ans(start, self.tz)
 		    end = unix_from_ans(end, self.tz)
-		    event_data = {'start': start, 'end': end, 'name': name,'idx':self.event_info[idx]['idx']}
+		    event_data = {'start': start, 'end': end, 'name': name}
 
 		    if idx is None:
 		        self.new_events.append(event_data)
 		        return [openai_format('Added new event.', role='function')]
 
+		    event_data['idx']=self.event_info[idx]['idx']
 		    self.event_info[idx] = event_data
 		    return [openai_format(f'Modified event {idx}.', role='function')]
 
@@ -536,13 +545,43 @@ class AIPupet():
         'function_call': None
     },
     {
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_event',
+        'arguments': '{"name": "Laundry", "start": {"year": 2023, "month": 8, "day": 1, "hour": 10, "minute": 0}, "end": {"year": 2023, "month": 8, "day": 1, "hour": 11, "minute": 0}}'
+    }
+},
+
+    {
         'role': 'assistant',
-        'content': None,
-        'function_call': {
-            'name': 'modify_event',
-            'arguments': '{"name": "Laundry", "start": {"year": 2023, "month": 8, "day": 1, "hour": 10, "minute": 0}, "end": {"year": 2023, "month": 8, "day": 1, "hour": 11, "minute": 0}'
-        }
+        'content': 'filler',
+        'function_call': None
     },
+    {
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_event',
+        'arguments': '{"idx":0}'
+    }
+},
+
+    {
+        'role': 'assistant',
+        'content': 'filler',
+        'function_call': None
+    },
+
+        {
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_wakeup',
+        'arguments': '{"name": "waaake","time":"2023-08-02 10:00","message":"nothing"}'
+    }
+},
+
     {
         'role': 'assistant',
         'content': 'filler',
@@ -551,7 +590,8 @@ class AIPupet():
 ]
 
 	def __init__(self):
-		self.idx=0
+		self.idx=8#len(self.api_calls)-2
+		#print(self.idx)
 	async def __call__(self,m):
 		for m1 in m:
 			#print(type(m1))

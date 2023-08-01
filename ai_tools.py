@@ -244,7 +244,7 @@ if __name__=='__main__':
     #print(openai_format('hi'))
     x=[openai_format('hi')]
     print(x)
-    print(un_async(gpt_response(x)))
+    #print(un_async(gpt_response(x)))
     async def filler(x):
         return openai_format('XXX')
     rate_limiter = RateLimitedAPICall(filler,5)  # allow up to 5 calls per second

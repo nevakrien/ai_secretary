@@ -96,7 +96,8 @@ class Calander():
         file_path=join(folder_path,f'event_{idx}.json')
         if d==None:
             os.remove(file_path)
-            os.removedirs(folder_path)
+            if not os.listdir(folder_path):
+                os.removedirs(folder_path)
         else:
             self.verify_and_unload(d)
             with open(file_path,'w') as f:
@@ -260,7 +261,8 @@ class WakeupManager():
         file_path=join(folder_path,f'wakeup_{idx}.json')
         if d==None:
             os.remove(file_path)
-            os.removedirs(folder_path)
+            if not os.listdir(folder_path):
+                os.removedirs(folder_path)
             try:
                 task=self.tasks[idx]
                 if task[1]:
