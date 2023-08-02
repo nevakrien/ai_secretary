@@ -97,7 +97,7 @@ class Calander():
         if d==None:
             os.remove(file_path)
             if not os.listdir(folder_path):
-                os.removedirs(folder_path)
+                os.rmdir(folder_path)
         else:
             self.verify_and_unload(d)
             with open(file_path,'w') as f:
@@ -262,7 +262,7 @@ class WakeupManager():
         if d==None:
             os.remove(file_path)
             if not os.listdir(folder_path):
-                os.removedirs(folder_path)
+                os.rmdir(folder_path)
             try:
                 task=self.tasks[idx]
                 if task[1]:

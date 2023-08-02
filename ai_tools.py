@@ -111,6 +111,24 @@ alowed_roles=('system','user','assistant','function')
 #                  ]
 functions = [
     {
+        "name": "set_ping",
+        "description": "Sets the delay and prompt for the bot's ping message.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "The message to be displayed when the ping is sent."
+                },
+                "duration": {
+                    "type": ["string", "integer"],
+                    "description": "The delay before the ping is sent. Can be an integer (number of seconds) or a string (representing a duration such as '1h 30m')."
+                }
+            },
+        }
+    },
+
+    {
         "name": "word_search_calander",
         "description": "Searches calendar for a range from start to end",
         "parameters": {
@@ -183,11 +201,11 @@ functions = [
                         "description": "Index of the event. Pass None for a new event."
                     },
                     "start": {
-                        "type": ["object", "null"],
+                        "type": ["object","string", "null"],
                         "description": f"Start date Pass None if no change is required."
                     },
                     "end": {
-                        "type": ["object", "null"],
+                        "type": ["object","string", "null"],
                         "description": f"End date Pass None if no change is required."
                     },
                     "name": {
@@ -218,7 +236,7 @@ functions = [
                             "description": "Wakeup message that will guide that session. Pass None if no change is required."
                         } ,
                    "time":  {
-                            "type": ["object", "null"],
+                            "type": ["object","string", "null"],
                             "description": f"End date and time . Pass None if no change is required."
                     } ,          
                     
@@ -243,7 +261,7 @@ if __name__=='__main__':
     openai.api_key=ai
     #print(openai_format('hi'))
     x=[openai_format('hi')]
-    print(x)
+    #print(x)
     #print(un_async(gpt_response(x)))
     async def filler(x):
         return openai_format('XXX')
