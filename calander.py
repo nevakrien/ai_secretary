@@ -100,6 +100,7 @@ class Calander():
                 os.rmdir(folder_path)
         else:
             self.verify_and_unload(d)
+            d['idx']=idx
             with open(file_path,'w') as f:
                 json.dump(d,f)
 
@@ -184,8 +185,8 @@ class WakeupManager():
         flag[0]=False
         await self.hook(d['name'],d['message'])
         d['happened'] = True  # Set happened flag to True
-        self.modify(d['idx'], d['time'], d)  # Update the wakeup 
-        #print('done hook')
+        self.modify(d['idx'], d['time'], d,cancel=False)  # Update the wakeup 
+        print('done hook')
         
     def _get_parent_folder(self, time_key: int) -> str:
         x=time_key//s_in_d
@@ -253,26 +254,40 @@ class WakeupManager():
 
 
 
-    def modify(self,idx:int,time :int,d:Optional[Dict] = None):
+    def modify(self,idx:int,time :int,d:Optional[Dict] = None,cancel=True):
         '''
         modifies or deletes a file, if you don't pass d it will delete if you do you override
         '''
+        #raise NotImplemented
         folder_path=self._get_folder_path(time)
         file_path=join(folder_path,f'wakeup_{idx}.json')
-        if d==None:
-            os.remove(file_path)
-            if not os.listdir(folder_path):
-                os.rmdir(folder_path)
+        
+        
+        if cancel:
+            #cancel the old wakeup
             try:
                 task=self.tasks[idx]
                 if task[1]:
                     task[0].cancel()
             except KeyError:
                 pass
-        else:
-            self.verify_and_unload(d)
-            with open(file_path,'w') as f:
-                json.dump(d,f)
+
+        #remove if needed
+        if d==None:
+            os.remove(file_path)
+            if not os.listdir(folder_path):
+                os.rmdir(folder_path)
+
+            self.log_history(idx,d)
+            return
+        
+        #modify    
+        if cancel:
+            self.make_task(idx,d)
+        
+        self.verify_and_unload(d)
+        with open(file_path,'w') as f:
+            json.dump(d,f)
 
         self.log_history(idx,d)
 
@@ -316,7 +331,8 @@ class WakeupManager():
 
         for wakeup in wakeups:
             if not wakeup['happened']:  # If a wakeup didn't occur
-                asyncio.create_task(self._hook(wakeup))
+                #asyncio.create_task(self._hook(wakeup))
+                self.make_task(wakeup['idx'],wakeup)
 
 if __name__=='__main__':
     from shutil import rmtree
@@ -457,6 +473,7 @@ if __name__=='__main__':
         print('we canceled properly')
     #wakeup2_result = manager.get_last(1)
     #assert wakeup2_result['happened'] == True, "Wakeup 2 did not occur"
+    manager.recover_from_crash()
     from utills import search_key
     print(search_key(manager.curent,'test'))
     print(search_key(manager.curent,'not apearing'))
