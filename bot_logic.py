@@ -24,6 +24,9 @@ import json
 
 from pytimeparse.timeparse import timeparse
 
+from typing import Optional
+
+
 '''
 TO DO:
 
@@ -262,7 +265,10 @@ class Bot():
 
 		if function_call:
 			try:
-				out= ans.funcs[function_call['name']](**json.loads(function_call['arguments']))	
+				args=json.loads(function_call['arguments'])
+				if self.debug:
+					print(f"calling: {function_call['name']} with {args}")
+				out= ans.funcs[function_call['name']](**args)	
 				for d in out:
 					if d['role']=='function':
 						d['name']=function_call['name']
@@ -421,7 +427,7 @@ class BotAnswer():
 		self.prompt=message
 		return [openai_format(f'you will be woken up in {duration}',role='function')]
 	
-	def modify_note(self,folder,idx=None,text=None,importance=None):
+	def modify_note(self,folder,idx:Optional[int]=None,text:Optional[str]=None,importance:Optional[int]=None):
 		'''
         changes note number idx in folder 
         if idx is zero make a new one
@@ -450,7 +456,7 @@ class BotAnswer():
 
 		return [openai_format(f'modified note {idx} in folder "{folder}"',role='function')]
 	
-	def modify_wakeup(self,idx=None,name=None,time=None,message=None):
+	def modify_wakeup(self,idx:Optional[int]=None,name:Optional[str]=None,time=None,message:Optional[str]=None):
 		'''
         changes wakeup number idx in folder 
         if idx is zero make a new one
@@ -462,7 +468,13 @@ class BotAnswer():
 			return [openai_format(f'canceled wakeup {idx}',role='function')]
 
 		if idx==None:
-			self.new_wakeups.append({'name':name,'message':message,'time':unix_from_ans(time)})
+			new={'name':name,'message':message,'time':unix_from_ans(time)}
+			try:
+				WakeupManager.verify_and_unload(new)
+			except:
+				[openai_format('ERROR: Failed to execute. the given wakeup format was wrong', role='function')]
+
+			self.new_wakeups.append(new)
 			return [openai_format(f'scedualed wakeup at"{time}"',role='function')]
 		
 		d=self.self.wake_info[idx]
@@ -474,9 +486,15 @@ class BotAnswer():
 		if time!=None:
 			d['time']=unix_from_ans(time)
 
+		try:
+			WakeupManager.verify_and_unload(d)
+		except:
+			[openai_format('ERROR: Failed to execute. the given wakeup format was wrong', role='function')]
+
 		return [openai_format(f'modified wakeup {idx} name: "{d["name"]}"',role='function')]
 
-	def modify_event(self, idx=None, start=None, end=None, name=None):
+	def modify_event(self, idx:Optional[int]=None, start=None, end=None, name:Optional[str]=None):
+		print(self.event_info)
 		'''
 		Expects start, end, and name as separate arguments.
 		If all are None, it will delete the entry.
@@ -491,6 +509,10 @@ class BotAnswer():
 		    start = unix_from_ans(start, self.tz)
 		    end = unix_from_ans(end, self.tz)
 		    event_data = {'start': start, 'end': end, 'name': name}
+		    try:
+		    	Calander.verify_and_unload(event_data)
+		    except:
+		    	[openai_format('ERROR: Failed to execute. the given event format was wrong', role='function')]
 
 		    if idx is None:
 		        self.new_events.append(event_data)
@@ -556,6 +578,8 @@ class BotAnswer():
 	            self.wakeup.modify(d['idx'], d['time'], d)
 
 	async def resolve_changes(self):
+	    if self.bot.debug:
+	    	print('resolving')
 	    self.resolve_folders()
 	    self.resolve_events()
 	    await self.resolve_wakeups()
@@ -620,6 +644,15 @@ class AIPupet():
         'content': 'filler',
         'function_call': None
     },
+
+{
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'word_search_calander',
+        'arguments': '{"key": ""}'
+    }
+}, 
 {
     'role': 'assistant',
     'content': None,
@@ -699,7 +732,7 @@ class AIPupet():
 
 		x=self.api_calls[self.idx]
 		self.idx+=1
-		print(f'got message: {m}\n{100*"-"}\n\n\n')
+		#print(f'got message: {m}\n{100*"-"}\n\n\n')
 		return x,x.get('content'),x.get("function_call")
 
 
@@ -720,7 +753,7 @@ if __name__=='__main__':
 
 	while pupet.idx<len(pupet.api_calls):
 		x=un_async(bot.respond_to_message('HI'))
-		print(x)
+		print(f'call ended with: {x}')
 
 
 		
