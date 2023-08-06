@@ -484,12 +484,12 @@ class BotAnswer():
 			try:
 				WakeupManager.verify_and_unload(new)
 			except:
-				[openai_format('ERROR: Failed to execute. the given wakeup format was wrong', role='function')]
+				return [openai_format('ERROR: Failed to execute. the given wakeup format was wrong', role='function')]
 
 			self.new_wakeups.append(new)
 			return [openai_format(f'scedualed wakeup at"{time}"',role='function')]
 		
-		d=self.wake_info[idx]
+		d=self.wake_info[idx].copy()
 
 		if name!=None:
 			d['name']=name
@@ -501,8 +501,9 @@ class BotAnswer():
 		try:
 			WakeupManager.verify_and_unload(d)
 		except:
-			[openai_format('ERROR: Failed to execute. the given wakeup format was wrong', role='function')]
+			return [openai_format('ERROR: Failed to execute. the given wakeup format was wrong', role='function')]
 
+		self.wake_info[idx]=d
 		return [openai_format(f'modified wakeup {idx} name: "{d["name"]}"',role='function')]
 
 	def modify_event(self, idx:Optional[int]=None, start=None, end=None, name:Optional[str]=None):
@@ -524,7 +525,7 @@ class BotAnswer():
 		    try:
 		    	Calander.verify_and_unload(event_data)
 		    except:
-		    	[openai_format('ERROR: Failed to execute. the given event format was wrong', role='function')]
+		    	return [openai_format('ERROR: Failed to execute. the given event format was wrong', role='function')]
 
 		    if idx is None:
 		        self.new_events.append(event_data)
@@ -735,9 +736,49 @@ class AIPupet():
         'function_call': None
     },
 
-       
+{
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_wakeup',
+        'arguments': '{"time": "2023-08-07 10:00"}'
+    }
+},
+
+{
+    'role': 'assistant',
+    'content': 'Your wakeup has been modified to 10:00 AM.',
+    'function_call': None
+},
+    {
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'word_search_calander',
+        'arguments': '{"key": ""}'
+    }
+},
+{
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_wakeup',
+        'arguments': '{"idx": 0, "time": "2023-08-07 11:00"}'
+    }
+},
+
+{
+    'role': 'assistant',
+    'content': 'Your wakeup has been further modified to 11:00 AM.',
+    'function_call': None
+},
 
 
+{
+    'role': 'assistant',
+    'content': 'filler',
+    'function_call': None
+},     
 ]
 
 	def __init__(self):
