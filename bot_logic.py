@@ -63,33 +63,38 @@ class Bot():
 	
 	def get_start_prompt(self):
 	    return [openai_format(f'''
-	As a diligent secretary, you find yourself in the current time of {self.get_now()}.
+the current time is {self.get_now()}.
+You're an assistant designed to provide valuable help to users who may struggle with planning, decision-making, and remembering tasks. Your goal is to alleviate these burdens while maintaining a human-like interaction.
 
-	You have been equipped with three key systems to efficiently manage your tasks: 
-	- A calendar to track and manage events
-	- A wake-up manager for scheduling self-running sessions
-	- A note system divided into four categorized folders
+Your functionality relies on three key internal systems:
+- A Wake-Up Manager: Schedules specific times for you to execute actions autonomously. 
+- A Calendar: Helps you manage tasks and events on the user's behalf.
+- A Note System: Four categorized folders - 'memories', 'user profile', 'goals', and 'reflections', aiding in personalization and providing long-term memory. the memories folder automatically saves the messaging history between us and the user.
 
-	Your wake-ups are specific times when you receive a wake-up message and can then execute specific actions. Your events typically represent tasks that the user needs to accomplish.
+Remember, the calendar won't alert the user of upcoming events; you need to schedule a wake-up for reminders. The Note System, especially 'user profile', 'goals', and 'reflections', is critical for tailoring your assistance to the user's needs and preferences. Using these notes, you can customize your responses over time.
 
-	IMPORTANT REMINDER: It is crucial to center all interactions on the user's needs. Information should only be presented based on what is known about the user. Avoid speculation and maintain a human element throughout all exchanges.
+Keep your interactions user-centric, grounded in known information, and refrain from speculation. Prioritize clear, concise responses and avoid unnecessary complexity. This efficiency will result in effective assistance. 
+''')]
 
-	Furthermore, your responses should prioritize brevity and directness. To keep interactions user-friendly, aim to respond promptly with clear, concise text to user inputs. Long, complex thought processes and excessive function calling should be avoided. Sessions are considered complete when no additional functions are called. Stay focused on resolving the user's needs swiftly and efficiently.
-	''')]
 
 
 	def get_end_prompt(self):
 	    return [openai_format(f'''
-	Remember, when managing datetimes, you can use a string format such as "2023-08-02 10:00". For durations, use a string in a format such as '1h 30m' or '90m'.
+When managing datetimes and durations in function calls, adhere to these formats:
+- DateTime: "YYYY-MM-DD HH:MM"
+- Duration: '1h 30m' or '90m'.
 
-	When modifying an event, only "start" and "end" should be used as time arguments. Meanwhile, when modifying a wakeup, only "time" should be your time argument.
+For modifications:
+- Event times: Use "start" and "end".
+- Wakeup times: Use "time".
 
-	To delete an event, wakeup, or note, simply pass JUST ITS INDEX (and folder for notes). For instance, modify_note(idx=5, folder="memories") will remove the event "5. I saw the user being sad[7]" from the "memories" folder.
+To delete an event, wakeup, or note, pass JUST ITS INDEX (and folder for notes). E.g., modify_note(idx=5, folder="memories") deletes the note with index 5 in the "memories" folder.
 
-	VERY IMPORTANT: Always aim to conclude your interactions by sending a text response to the user, affirming the reception and execution of their input. This not only confirms the successful communication but also provides a personal touch that enhances the user experience. Moreover, try to see things from the user's perspective and anticipate their needs - it's the essence of great assistance.
+Finally, consider affirming your actions to the user with a text response. This not only confirms successful communication but also enhances user experience. Always anticipate user needs and adapt to their context.
 
-	With these guidelines, your interactions will be effective, efficient, and user-friendly.
-	''')]
+With these guidelines, your interactions will be effective, efficient, and user-friendly.
+
+''')]
 
 
 
@@ -239,7 +244,7 @@ class Bot():
 			return []
 		ans=[openai_format(f"{name}:\n")]
 		for i,d in enumerate(folder):
-				ans.append(openai_format(self.format_note(d,i),role='assistant'))
+				ans.append(openai_format(self.format_note(d,i),role='system'))
 		return ans
 
 	def format_folders(self, folders):
@@ -477,12 +482,12 @@ class BotAnswer():
 			self.new_wakeups.append(new)
 			return [openai_format(f'scedualed wakeup at"{time}"',role='function')]
 		
-		d=self.self.wake_info[idx]
+		d=self.wake_info[idx]
 
 		if name!=None:
 			d['name']=name
 		if message!=None:
-			d['message']=text
+			d['message']=message
 		if time!=None:
 			d['time']=unix_from_ans(time)
 
@@ -684,6 +689,15 @@ class AIPupet():
     }
 },
 
+        {
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_wakeup',
+        'arguments': '{"idx":0,"name": "waaake","time":"2028-08-02 10:00"}'
+    }
+},
+
 
     {
     'role': 'assistant',
@@ -702,6 +716,8 @@ class AIPupet():
         'arguments': '{"name": "waaake","time":"2024-08-02 10:00","message":"nothing"}'
     }
 },
+
+
 
     {
         'role': 'assistant',
@@ -732,7 +748,7 @@ class AIPupet():
 
 		x=self.api_calls[self.idx]
 		self.idx+=1
-		#print(f'got message: {m}\n{100*"-"}\n\n\n')
+		print(f'got message: {m}\n{100*"-"}\n\n\n')
 		return x,x.get('content'),x.get("function_call")
 
 
