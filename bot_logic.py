@@ -383,8 +383,10 @@ class BotAnswer():
 		self.note_info={k:v for k,v in zip(self.folders.keys(),info[1])}
 		self.new_notes={k:[] for k in self.folders.keys()}
 		self.event_info=info[2]
+		self.event_starts=[d['start'] for d in self.event_info]
 		self.new_events=[]
 		self.wake_info=info[3]
+		self.wake_times=[d['time'] for d in self.wake_info]
 		self.new_wakeups=[]
 		
 		self.delay = s_in_d 
@@ -397,6 +399,9 @@ class BotAnswer():
 
 		self.event_info=search_key(self.cal.curent,key)
 		self.wake_info=search_key(self.wakeup.curent,key)
+		self.event_starts=[d['start'] for d in self.event_info]
+		self.wake_times=[d['time'] for d in self.wake_info]
+
 		ans= self.bot.format_time_dependent(self.event_info,self.wake_info)
 		
 		m=openai_format('searched wakeups and events',role='function')
@@ -406,11 +411,13 @@ class BotAnswer():
 		raise Change_Time(self.time_rewrite_count)
 	
 	def range_search_calander(self,start:dict,end:dict):
-		self.resolve_changes()
+		#self.resolve_changes()
 		start=unix_from_ans(start,self.tz)
 		end=unix_from_ans(end,self.tz)
 		self.event_info=self.cal.range_search(start,end) 
 		self.wake_info=self.wakeup.range_search(start,end) 
+		self.event_starts=[d['start'] for d in self.event_info]
+		self.wake_times=[d['time'] for d in self.wake_info]
 		ans= self.bot.format_time_dependent(self.event_info,self.wake_info)
 		
 		m=openai_format('searched wakeups and events',role='function')
@@ -555,32 +562,35 @@ class BotAnswer():
 	                folder._modify(d['idx'], d)
 
 	def resolve_events(self):
-	    for d in self.new_events:
-	        self.cal.add(d)
+		print(self.event_info)
+		print(self.event_starts)
+		print(self.new_events)
+		for d in self.new_events:
+		    self.cal.add(d)
 
-	    for d in self.event_info:
-	        if isinstance(d, list):
-	            self.cal.modify(d[0], d[1])
-	        else:
-	            try:
-	                d.pop('embed')
-	            except KeyError:
-	                pass
-	            self.cal.modify(d['idx'], d['start'], d)
+		for i,d in enumerate(self.event_info):
+			if isinstance(d, list):
+				self.cal.modify(d[0], self.event_starts[i])
+			else:
+			    try:
+			        d.pop('embed')
+			    except KeyError:
+			        pass
+			    self.cal.modify(d['idx'], self.event_starts[i], d)
 
 	async def resolve_wakeups(self):
 	    add_tasks = [self.wakeup.add(d) for d in self.new_wakeups]
 	    await asyncio.gather(*add_tasks)
 
-	    for d in self.wake_info:
+	    for i,d in enumerate(self.wake_info):
 	        if isinstance(d, list):
-	            self.wakeup.modify(d[0], d[1])
+	            self.wakeup.modify(d[0], self.wake_times[i])
 	        else:
 	            try:
 	                d.pop('embed')
 	            except KeyError:
 	                pass
-	            self.wakeup.modify(d['idx'], d['time'], d)
+	            self.wakeup.modify(d['idx'], self.wake_times[i], d)
 
 	async def resolve_changes(self):
 	    if self.bot.debug:

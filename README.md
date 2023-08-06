@@ -12,4 +12,4 @@ add length constraints and checks for the input
 remove the halusinations made from the autocomplete behvior	
 
 ODD BUGS:
-when changing the time of a wakeup that new time is used to search it causing an error
+when changing the time of a wakeup that new time is used to search it causing an error (likely cause is fixed)
