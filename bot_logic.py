@@ -562,9 +562,9 @@ class BotAnswer():
 	                folder._modify(d['idx'], d)
 
 	def resolve_events(self):
-		print(self.event_info)
-		print(self.event_starts)
-		print(self.new_events)
+		#print(self.event_info)
+		#print(self.event_starts)
+		#print(self.new_events)
 		for d in self.new_events:
 		    self.cal.add(d)
 
