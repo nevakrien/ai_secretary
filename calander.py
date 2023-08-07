@@ -94,15 +94,24 @@ class Calander():
         '''
         folder_path=self._get_folder_path(start_time)
         file_path=join(folder_path,f'event_{idx}.json')
+        
+        os.remove(file_path)
+        if not os.listdir(folder_path):
+            os.removedirs(folder_path)
+            os.makedirs(self.curent,exist_ok=True)
+        
         if d==None:
-            os.remove(file_path)
-            if not os.listdir(folder_path):
-                os.rmdir(folder_path)
-        else:
-            self.verify_and_unload(d)
-            d['idx']=idx
-            with open(file_path,'w') as f:
-                json.dump(d,f)
+            self.log_history(idx,d)
+            return 
+        
+        folder_path=self._get_folder_path(d['start'])
+        file_path=join(folder_path,f'event_{idx}.json')
+
+        os.makedirs(folder_path)
+        self.verify_and_unload(d)
+        d['idx']=idx
+        with open(file_path,'w') as f:
+            json.dump(d,f)
 
         self.log_history(idx,d)
 
@@ -272,19 +281,28 @@ class WakeupManager():
             except KeyError:
                 pass
 
+        if not cancel:
+            if not exists(file_path):
+                return
+        os.remove(file_path)
+        if not os.listdir(folder_path):
+            os.removedirs(folder_path)
+            os.makedirs(self.curent,exist_ok=True)
+        
         #remove if needed
         if d==None:
-            os.remove(file_path)
-            if not os.listdir(folder_path):
-                os.rmdir(folder_path)
-
             self.log_history(idx,d)
             return
-        
+       
+
         #modify    
         if cancel:
             self.make_task(idx,d)
         
+        folder_path=self._get_folder_path(d['time'])
+        file_path=join(folder_path,f'wakeup_{idx}.json')
+        os.makedirs(folder_path)
+
         self.verify_and_unload(d)
         with open(file_path,'w') as f:
             json.dump(d,f)
@@ -337,6 +355,7 @@ class WakeupManager():
 if __name__=='__main__':
     from shutil import rmtree
     from utills import un_async
+    import threading
     
 
     if exists('cal_data'):
@@ -436,7 +455,18 @@ if __name__=='__main__':
     except:
         pass
 
-    #loop=asyncio.get_event_loop()
+    
+    def start_loop(loop,func):
+        asyncio.set_event_loop(loop)
+        async def f():
+            func()
+        loop.create_task(f())
+        loop.run_forever()
+
+    def stop_loop(loop):
+        loop.call_soon_threadsafe(loop.stop)
+
+    
     #for x in loop:
      #   print(x)
 
@@ -464,7 +494,25 @@ if __name__=='__main__':
     un_async(manager.add(wakeup3))
     print(manager.tasks)
     manager.modify(wakeup3['idx'], wakeup3['time'])
+    #change 1 to 2
 
+    loop=asyncio.new_event_loop()
+    flag=[True]
+    def f():
+        manager.modify(wakeup1['idx'], wakeup1['time'],wakeup2)
+        manager.modify(wakeup1['idx'], wakeup2['time'],wakeup3)
+        task=manager.tasks.pop(wakeup1['idx'])[0]
+        print(type(task))
+        asyncio.ensure_future(task)
+        #manager.modify(wakeup1['idx'], wakeup3['time'],wakeup1)
+        flag[0]=False
+        #manager.modify(wakeup1['idx'], wakeup3['time'],wakeup1)
+    #f=lambda :manager.modify(wakeup1['idx'], wakeup1['time'],wakeup2)#;manager.modify(wakeup1['idx'], wakeup1['time'],wakeup2)
+    t = threading.Thread(target=start_loop, args=(loop,f))
+    t.start()
+    while flag[0]:
+        time.sleep(1)
+    #t.join()
     #print(manager.tasks)
     tasks=[task[0] for task  in manager.tasks.values()]
     try:
@@ -473,12 +521,18 @@ if __name__=='__main__':
         print('we canceled properly')
     #wakeup2_result = manager.get_last(1)
     #assert wakeup2_result['happened'] == True, "Wakeup 2 did not occur"
-    manager.recover_from_crash()
+    #manager.recover_from_crash()
+    loop=asyncio.new_event_loop()
+    t = threading.Thread(target=start_loop, args=(loop,manager.recover_from_crash))
+    t.start()
+    #t.join()
     from utills import search_key
     print(search_key(manager.curent,'test'))
     print(search_key(manager.curent,'not apearing'))
     
     print("All tests passed successfully!")
+
+    print(f'1: {wakeup1["idx"]} 2: {wakeup2["idx"]} 3: {wakeup3["idx"]}')
 
     # Clean up
     #manager.modify(0, wakeup1['time'])

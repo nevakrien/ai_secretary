@@ -51,6 +51,9 @@ def un_async(func):
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(func)
 
+async def make_async(func,*args,**kwargs):
+    return func(*args,**kwargs)
+
 def unix_from_string(m,tz=None):
     m=datetime.strptime(m,"%Y-%m-%d %H:%M")
     if(tz):

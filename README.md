@@ -13,4 +13,4 @@ add length constraints and checks for the input
 remove the halusinations made from the autocomplete behvior	
 
 ODD BUGS:	
-when changing the time of a wakeup that new time is used to search it causing an error this only happens in production for some reason
+when changing the time of a wakeup that new time is used to search it causing an error (fixed? cause of the error is that search is called before resolution)

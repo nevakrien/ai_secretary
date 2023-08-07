@@ -10,7 +10,7 @@ from ai_tools import gpt_response,Input_validation
 from utills import min_max_scale,string_from_unix,openai_format,unix_from_ans,search_key
 
 import asyncio
-from utills import un_async
+from utills import un_async,make_async
 
 import os 
 from os.path import join,exists
@@ -325,16 +325,26 @@ Following these guidelines will ensure your interactions are not only effective 
 			
 			except Change_Time as e:
 				
+				#continue
 				#I am SO sorry 
+				#print(f'in time resolve:\n{ans.wake_info}')
 				await ans.resolve_time_changes()
+				#await ans.resolve_changes()
+				
+				event_info=await e.event_info
+				wake_info=await e.wake_info
+
 				ans.new_events=[]
 				ans.new_wakeups=[]
-				ans.event_info=e.event_info
-				ans.wake_info=e.wake_info
+				
+				
+				ans.event_info=event_info
+				ans.wake_info=wake_info
 				ans.event_starts=[d['start'] for d in ans.event_info]
 				ans.wake_times=[d['time'] for d in ans.wake_info]
+				#print(f'after setup:\n{ans.wake_info}')
 
-				time_inputs = ans.time_inputs
+				time_inputs = ans.time_inputs+self.format_time_dependent(event_info,wake_info)
 				mmm=openai_format(f'NOTICE: The previous top message was replaced due to a function call for the {e.count} time(s). Please note that older function calls modifying or deleting events and wakeups no longer refer to the items currently at the top.')
 				
 				#add note messages
@@ -405,16 +415,17 @@ class BotAnswer():
 	def word_search_calander(self,key:str):
 		#self.resolve_changes()
 
-		event_info=search_key(self.cal.curent,key)
-		wake_info=search_key(self.wakeup.curent,key)
-		#self.event_starts=[d['start'] for d in self.event_info]
-		#self.wake_times=[d['time'] for d in self.wake_info]
+		event_info=make_async(search_key,self.cal.curent,key)
+		wake_info=make_async(search_key,self.wakeup.curent,key)
+		
+		#print(event_info)
+		#print(wake_info)
 
-		ans= self.bot.format_time_dependent(self.event_info,self.wake_info)
+		#ans= self.bot.format_time_dependent(event_info,wake_info)
 		
 		m=openai_format('searched wakeups and events',role='function')
 		m['name']='word_search_calander'
-		self.time_inputs= [m]+ans 
+		self.time_inputs= [m]#+ans 
 		self.time_rewrite_count+=1
 		raise Change_Time(self.time_rewrite_count,event_info,wake_info)
 	
@@ -426,11 +437,11 @@ class BotAnswer():
 		wake_info=self.wakeup.range_search(start,end) 
 		#self.event_starts=[d['start'] for d in self.event_info]
 		#self.wake_times=[d['time'] for d in self.wake_info]
-		ans= self.bot.format_time_dependent(self.event_info,self.wake_info)
+		#ans= self.bot.format_time_dependent(event_info,wake_info)
 		
 		m=openai_format('searched wakeups and events',role='function')
 		m['name']='range_search_calander'
-		self.time_inputs= [m]+ans 
+		self.time_inputs= [m]#+ans 
 		self.time_rewrite_count+=1
 		raise Change_Time(self.time_rewrite_count,event_info,wake_info)
 
@@ -591,6 +602,9 @@ class BotAnswer():
 			    self.cal.modify(d['idx'], self.event_starts[i], d)
 
 	async def resolve_wakeups(self):
+	    #print(self.wake_info)
+		#print(self.wake_starts)
+		#print(self.new_wakes)
 	    add_tasks = [self.wakeup.add(d) for d in self.new_wakeups]
 	    await asyncio.gather(*add_tasks)
 
@@ -602,11 +616,14 @@ class BotAnswer():
 	                d.pop('embed')
 	            except KeyError:
 	                pass
+	            #if self.bot.debug:
+	            	#print(f'changing {d["idx"]} from {self.wake_times[i]} to {d["time"]}')
 	            self.wakeup.modify(d['idx'], self.wake_times[i], d)
 
 	async def resolve_changes(self):
 	    if self.bot.debug:
 	    	print('resolving')
+	    	print (self.wake_info)
 	    self.resolve_folders()
 	    self.resolve_events()
 	    await self.resolve_wakeups()
@@ -647,7 +664,7 @@ class AIPupet():
     'content': None,
     'function_call': {
         'name': 'modify_wakeup',
-        'arguments': '{"name": "waaake","time":"2023-08-02 10:00","message":"nothing"}'
+        'arguments': '{"name": "waaake","time":"2023-08-05 10:00","message":"nothing"}'
     }
 },
 
@@ -721,6 +738,8 @@ class AIPupet():
 },
 
 
+
+#!!!
     {
     'role': 'assistant',
     'content': None,
@@ -729,6 +748,7 @@ class AIPupet():
         'arguments': '{"key": ""}'
     }
 },
+#!!!
 
         {
     'role': 'assistant',
@@ -816,7 +836,37 @@ class AIPupet():
     'role': 'assistant',
     'content': 'filler',
     'function_call': None
-},     
+},   
+{
+	"role": "assistant",
+	"content": None,
+	"function_call": {
+	  "name": "modify_wakeup",
+	  "arguments": "{\n  \"name\": \"Wake up\",\n  \"time\": \"2023-08-08 09:00\"\n}"
+	}
+},
+
+{
+        "role": "assistant",
+        "content": "Sure! I've scheduled a wakeup for you tomorrow at 9:00 AM. Is there anything else you need assistance with?"
+      },
+      {
+        "role": "assistant",
+        "content": None,
+        "function_call": {
+          "name": "modify_wakeup",
+          "arguments": "{\n  \"idx\": 0,\n  \"time\": \"2023-08-08 10:00\"\n}"
+        }
+      },
+      {
+        "role": "assistant",
+        "content": "Sure, I've updated your wake-up time to 10:00 AM tomorrow. Is there anything else you need assistance with?"
+      },
+      {
+        "role": "assistant",
+        "content": "Sure, I can help with that. Are you looking for a game of checkers to play?"
+      },
+
 ]
 
 	def __init__(self):
@@ -837,7 +887,7 @@ class AIPupet():
 
 		x=self.api_calls[self.idx]
 		self.idx+=1
-		print(f'got message: {m}\n{100*"-"}\n\n\n')
+		#print(f'got message: {m}\n{100*"-"}\n\n\n')
 		return x,x.get('content'),x.get("function_call")
 
 
