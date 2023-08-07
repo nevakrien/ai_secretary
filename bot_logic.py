@@ -329,6 +329,10 @@ Following these guidelines will ensure your interactions are not only effective 
 				await ans.resolve_time_changes()
 				ans.new_events=[]
 				ans.new_wakeups=[]
+				ans.event_info=e.event_info
+				ans.wake_info=e.wake_info
+				ans.event_starts=[d['start'] for d in ans.event_info]
+				ans.wake_times=[d['time'] for d in ans.wake_info]
 
 				time_inputs = ans.time_inputs
 				mmm=openai_format(f'NOTICE: The previous top message was replaced due to a function call for the {e.count} time(s). Please note that older function calls modifying or deleting events and wakeups no longer refer to the items currently at the top.')
@@ -368,8 +372,10 @@ Following these guidelines will ensure your interactions are not only effective 
 		return await self.session(text,source='assistant')
 
 class Change_Time(Exception):
-	def __init__(self,count):
+	def __init__(self,count,events,wakes):
 		self.count=count
+		self.event_info=events
+		self.wake_info=wakes
 
 class BotAnswer():
 	def __init__(self,bot,info):
@@ -399,10 +405,10 @@ class BotAnswer():
 	def word_search_calander(self,key:str):
 		#self.resolve_changes()
 
-		self.event_info=search_key(self.cal.curent,key)
-		self.wake_info=search_key(self.wakeup.curent,key)
-		self.event_starts=[d['start'] for d in self.event_info]
-		self.wake_times=[d['time'] for d in self.wake_info]
+		event_info=search_key(self.cal.curent,key)
+		wake_info=search_key(self.wakeup.curent,key)
+		#self.event_starts=[d['start'] for d in self.event_info]
+		#self.wake_times=[d['time'] for d in self.wake_info]
 
 		ans= self.bot.format_time_dependent(self.event_info,self.wake_info)
 		
@@ -410,23 +416,23 @@ class BotAnswer():
 		m['name']='word_search_calander'
 		self.time_inputs= [m]+ans 
 		self.time_rewrite_count+=1
-		raise Change_Time(self.time_rewrite_count)
+		raise Change_Time(self.time_rewrite_count,event_info,wake_info)
 	
 	def range_search_calander(self,start:dict,end:dict):
 		#self.resolve_changes()
 		start=unix_from_ans(start,self.tz)
 		end=unix_from_ans(end,self.tz)
-		self.event_info=self.cal.range_search(start,end) 
-		self.wake_info=self.wakeup.range_search(start,end) 
-		self.event_starts=[d['start'] for d in self.event_info]
-		self.wake_times=[d['time'] for d in self.wake_info]
+		event_info=self.cal.range_search(start,end) 
+		wake_info=self.wakeup.range_search(start,end) 
+		#self.event_starts=[d['start'] for d in self.event_info]
+		#self.wake_times=[d['time'] for d in self.wake_info]
 		ans= self.bot.format_time_dependent(self.event_info,self.wake_info)
 		
 		m=openai_format('searched wakeups and events',role='function')
 		m['name']='range_search_calander'
 		self.time_inputs= [m]+ans 
 		self.time_rewrite_count+=1
-		raise Change_Time(self.time_rewrite_count)
+		raise Change_Time(self.time_rewrite_count,event_info,wake_info)
 
 
 	def set_ping(self,message:str,duration:str):
@@ -512,7 +518,7 @@ class BotAnswer():
 		return [openai_format(f'modified wakeup {idx} name: "{d["name"]}"',role='function')]
 
 	def modify_event(self, idx:Optional[int]=None, start=None, end=None, name:Optional[str]=None):
-		print(self.event_info)
+		#print(self.event_info)
 		'''
 		Expects start, end, and name as separate arguments.
 		If all are None, it will delete the entry.
@@ -752,7 +758,7 @@ class AIPupet():
 
 {
     'role': 'assistant',
-    'content': 'Your wakeup has been modified to 10:00 AM.',
+    'content': 'fail',
     'function_call': None
 },
     {
@@ -779,6 +785,33 @@ class AIPupet():
 },
 
 
+{
+    'role': 'assistant',
+    'content': 'filler',
+    'function_call': None
+}, 
+{
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_wakeup',
+        'arguments': '{"name":"fill","message":"nope", "time": '+f'"{string_from_unix(int(time.time())+s_in_d)}"'+'}'
+    }
+},
+
+{
+    'role': 'assistant',
+    'content': 'Your wakeup has been further modified to 11:00 AM.',
+    'function_call': None
+},    
+{
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'modify_wakeup',
+        'arguments': '{"idx": 0,"name":"fill", "time": "2023-08-07 12:00"}'
+    }
+},
 {
     'role': 'assistant',
     'content': 'filler',
