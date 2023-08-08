@@ -107,7 +107,7 @@ class Calander():
         folder_path=self._get_folder_path(d['start'])
         file_path=join(folder_path,f'event_{idx}.json')
 
-        os.makedirs(folder_path)
+        os.makedirs(folder_path,exist_ok=True)
         self.verify_and_unload(d)
         d['idx']=idx
         with open(file_path,'w') as f:
@@ -166,7 +166,7 @@ class Calander():
                 return ans
 
 class WakeupManager():
-    def __init__(self,path,new=False,spacing=60*5,limit=10):
+    def __init__(self,path,new=False):#,spacing=60*5,limit=10):
         
         self.history=join(path,'history')
         self.curent=join(path,'curent')
@@ -178,8 +178,8 @@ class WakeupManager():
             os.mkdir(self.curent)
             write_int_to_file(self.idx_file,0)
 
-        self.spacing=spacing
-        self.limit=limit
+        #self.spacing=spacing
+        #self.limit=limit
 
         self.tasks={}
 
@@ -242,11 +242,11 @@ class WakeupManager():
         #if exists(path):
             #raise Exception("A wakeup already exists for this timestamp")
 
-        my_time=len(self.range_search(time-self.spacing,time+self.spacing))
-        capacity=len(self.search_wakeups(time-s_in_d,time+s_in_d)) 
+        #my_time=len(self.range_search(time-self.spacing,time+self.spacing))
+        #capacity=len(self.search_wakeups(time-s_in_d,time+s_in_d)) 
 
-        assert my_time==0 
-        assert capacity<self.limit
+        #assert my_time==0 
+        #assert capacity<self.limit
 
         path=self._get_folder_path(time)
         os.makedirs(path)
@@ -259,7 +259,7 @@ class WakeupManager():
 
         self.make_task(idx,d)#asyncio.create_task(self._hook(d))
 
-        return capacity
+        #return capacity
 
 
 
@@ -301,7 +301,7 @@ class WakeupManager():
         
         folder_path=self._get_folder_path(d['time'])
         file_path=join(folder_path,f'wakeup_{idx}.json')
-        os.makedirs(folder_path)
+        os.makedirs(folder_path,exist_ok=True)
 
         self.verify_and_unload(d)
         with open(file_path,'w') as f:
@@ -425,7 +425,7 @@ if __name__=='__main__':
         rmtree('wakeup_lol')
 
     # Prepare
-    manager = WakeupManager('wakeup_lol', new=True, spacing=2, limit=2)  # replace with a valid path
+    manager = WakeupManager('wakeup_lol', new=True)#, spacing=2, limit=2)  # replace with a valid path
 
     t=int(time.time()) 
     wakeup1 = {
@@ -478,7 +478,7 @@ if __name__=='__main__':
     wakeup1_result = manager.get_last(0)
     assert wakeup1_result['happened'] == True, "Wakeup 1 did not occur"
 
-    manager=WakeupManager('wakeup_lol',spacing=1,limit=10)
+    manager=WakeupManager('wakeup_lol')#,spacing=1,limit=10)
     
     manager.modify(0, wakeup1['time'])
     print(manager.range_search(wakeup1['time'],wakeup1['time']+5))

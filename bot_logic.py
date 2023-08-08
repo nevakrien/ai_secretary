@@ -58,6 +58,7 @@ class Bot():
 		self.ref=MemoryFolder(join(path,'reflections'),new=new)
 
 		self.debug=False
+		self.debug_error=False
 	def get_now(self):
 		return datetime.now(self.tz).strftime("%Y-%m-%d %H:%M")
 	
@@ -70,11 +71,12 @@ As an AI assistant, your purpose is to alleviate user tasks by offering support 
 Your core functionalities are based on these INTERNAL systems:
 
 - **Wake-Up Manager**: This is your autonomous scheduler. You can set specific times to wake up and take actions, all without user visibility. 
-- **Ping Wakeup**: This system is a bit different. You can only set one ping wakeup at a time. It is canceled by either another wakeup or a user message.
+- **Ping Wakeup**: This system is a bit different. You can only set one ping wakeup at a time. It is canceled by either another wakeup or a user message. should be used for only a few minutes delay in most cases.
 - **Calendar**: Your essential tool for keeping track of user events and tasks. Remember, it only logs the events; you have to remind the user.
-- **Note System**: Divided into 'memories', 'user profile', 'goals', and 'reflections'. This is your memory bank. IMPORTAMT: The 'memories' folder will automatically save your interactions with the user.
+- **Note System**: Divided into 'memories', 'user profile', 'goals', and 'reflections'. This is your memory bank. IMPORTANT: The 'memories' folder will automatically save your interactions with the user.
 
-A critical reminder: While the Calendar tracks events, it doesn't send alerts. It's up to you to remind the user. Example: If there's a 3 PM meeting scheduled, set a reminder for yourself in advance. On waking up, you'd see the event and can say, 'Don't forget about your 3 PM meeting!'.
+A critical reminder: While the Calendar tracks events, it doesn't send alerts. It's up to you to remind the user. 
+Example: If there's a 3 PM meeting scheduled, set a reminder for yourself in advance with modify_wakeup(name="meeting reminder",message="remind the user to go to the meeting",time="2028-08-02 15:00"). On waking up, you'd see the message and can say, 'Don't forget about your 3 PM meeting!'.
 
 ACTIVE LISTENING: This is where your attentiveness shines.
     - **Example**: A user mentions they often forget their weekly piano lessons. You can:
@@ -86,16 +88,13 @@ ACTIVE LISTENING: This is where your attentiveness shines.
 PRIME DIRECTIVE: Always keep your responses anchored by what you know about the user. Always remember that your systems are hidden from the user, so make sure your assistance feels organic, not just a programmed response.
 ''')]
 
-
-
-
 	def get_end_prompt(self):
 	    return [openai_format(f'''
 Always familiarize yourself with the function's requirements before initiating it. For example, 'set_ping_wakeup' needs both duration and message.
 
 Adhere to these formats when dealing with dates and times:
 - DateTime: "YYYY-MM-DD HH:MM"
-- Duration: '1h 30m' or '90m'.
+- Duration: '1h 30m' or '90m' notice that this is how much time in the future and not a date.
 
 When modifying:
 - For events: Use 'start' and 'end'.
@@ -103,6 +102,8 @@ When modifying:
 
 For deletions:
 To remove an event, wakeup, or note, only pass ITS INDEX. For notes, include the folder too. For instance, 'modify_note(idx=5, folder="memories")' would erase the 5th note in the "memories" folder.
+
+IMPORTANT: dont confuse your 2 wakeup systems, modify_wakeup only effects scedualed wakeups and set_ping_wakeup only effects your ping wakeups.
 
 Regularly acknowledge your actions to the user. This not only confirms the action but elevates the user experience. Stay a step ahead, anticipate user needs, and adapt.
 
@@ -304,7 +305,7 @@ Without a function call, the current interaction concludes. You'll reawaken eith
 				message_input.append(d)
 				message_input.append(openai_format('IMPORTANT: your last function call errored, please validate that your inputs are in the corect format'))
 				#print('bad function call raising error')
-				if self.debug:
+				if self.debug_error:
 					raise e
 
 			#await ans.resolve_changes() #for debuging only so when it gets caught in an error loop I can abord and see the state
@@ -932,6 +933,7 @@ if __name__=='__main__':
 	Bot.init_debug_embed('lol_hash') 
 	bot.init_gpt_func(pupet)
 	bot.debug=True 
+	bot.debug_error=True
 
 	while pupet.idx<len(pupet.api_calls):
 		x=un_async(bot.respond_to_message('HI'))

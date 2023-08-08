@@ -68,9 +68,9 @@ class AIResponder(Responder):#we just want the start method from Responder
 		            respond_info = json.load(f)
 		        time_sent = datetime.strptime(respond_info['time'], '%Y-%m-%d %H:%M:%S')
 		        time_now = datetime.now()
-		        delay = (time_sent - time_now).total_seconds()
+		        delay = (time_sent - time_now).total_seconds()+respond_info['delay']
 		            
-		        if time_sent > time_now:
+		        if delay > 0:
 		            w = FolowUpCalls( bot,user_id, respond_info['message'], delay)
 		        else:
 		            #delay,message=await self.wrapped_errored_reminder(bot,user_id,respond_info['message'])
