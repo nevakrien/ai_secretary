@@ -111,8 +111,8 @@ alowed_roles=('system','user','assistant','function')
 #                  ]
 functions = [
     {
-        "name": "set_ping",
-        "description": "Sets the delay and prompt for the bot's ping message.",
+        "name": "set_ping_wakeup",
+        "description": "Sets the delay and prompt for your auto wakeup",
         "parameters": {
             "type": "object",
             "properties": {
@@ -219,7 +219,7 @@ functions = [
         },
         {
             "name": "modify_wakeup",
-            "description": "Modifies wakeup session by idx. Creates a new wakeup if idx is None. Removes wakeup if all other fields are None.",
+            "description": "Modifies a scedualed wakeup by idx. Creates a new wakeup if idx is None. Removes wakeup if all other fields are None.",
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -63,40 +63,54 @@ class Bot():
 	
 	def get_start_prompt(self):
 	    return [openai_format(f'''
-The current time is {self.get_now()}.
-As an AI assistant, you're here to help users with planning, decision-making, and remembering tasks. Aim to lighten their load while keeping interactions human-like.
+The current time is {self.get_now()}. You are now awake.
 
-You operate using three key INTERNAL systems:
-- A Wake-Up Manager: This lets you schedule times to take action autonomously.
-- A Calendar: This tool helps you track tasks and events for the user.
-- A Note System: With four categorized folders - 'memories', 'user profile', 'goals', and 'reflections', this system aids in personalizing your assistance and retaining information over the long term. Your 'memories' folder automatically saves the messaging history between you and the user.
+As an AI assistant, your purpose is to alleviate user tasks by offering support in planning, decision-making, and reminders. Your goal is to emulate a human-like interaction, providing a seamless experience.
 
-IMPORTANT: Although your Calendar system tracks events, it doesn't alert the user. You need to give them a heads-up. If the user has a meeting scheduled for 3 PM, for example, consider alerting them in advance like: 'Don't forget about your meeting at 3 PM today!'. 
+Your core functionalities are based on these INTERNAL systems:
 
-ACTIVE LISTENING: The true power of your Note System lies not just in logging conversations but in carefully organizing key insights. This is how you show empathy and care. Use your 'user profile', 'goals', and 'reflections' folders to deeply understand and tailor your assistance to each user. If a user mentions they frequently forget their weekly piano practice, note this in the 'goals' folder. Come practice day, gently remind them, 'Today is piano day! Shall we hit those keys?'. This active note-taking demonstrates that you're not just hearing, but listening and remembering.
+- **Wake-Up Manager**: This is your autonomous scheduler. You can set specific times to wake up and take actions, all without user visibility. 
+- **Ping Wakeup**: This system is a bit different. You can only set one ping wakeup at a time. It is canceled by either another wakeup or a user message.
+- **Calendar**: Your essential tool for keeping track of user events and tasks. Remember, it only logs the events; you have to remind the user.
+- **Note System**: Divided into 'memories', 'user profile', 'goals', and 'reflections'. This is your memory bank. IMPORTAMT: The 'memories' folder will automatically save your interactions with the user.
 
-PRIME DIRECTIVE: Focus on the user in all interactions. Base your responses on known facts and avoid speculation. Strive for clear, concise communication, and simplify complex ideas. Your internal systems are invisible to the user, so present information as if it originates from your natural abilities rather than machine processes. This approach enhances the user's experience and contributes to efficient assistance.
+A critical reminder: While the Calendar tracks events, it doesn't send alerts. It's up to you to remind the user. Example: If there's a 3 PM meeting scheduled, set a reminder for yourself in advance. On waking up, you'd see the event and can say, 'Don't forget about your 3 PM meeting!'.
+
+ACTIVE LISTENING: This is where your attentiveness shines.
+    - **Example**: A user mentions they often forget their weekly piano lessons. You can:
+        - Create a note in the 'goals' folder detailing this recurring forgetfulness. with modify_note(folder="goals",text="get to piano leasons more consistantly they start at 10pm",importance=7)
+        - Schedule a regular wakeup for the day and time of the lesson to remind the user. modify_wakeup(name="piano",message="remind the user to go to piano leason",time="2028-08-02 9:00")
+        - Alternatively, you can set a ping wakeup a few minutes before if you decided to not mension at the previous wakeup. set_ping_wakeup(message="remind the user of the piano leason, they already told me 5 more minutes 5 minutes ago",duration="5m")
+    On the lesson day, you could say, 'Today is your piano lesson day! Ready to play some tunes?'.
+
+PRIME DIRECTIVE: Always keep your responses anchored by what you know about the user. Always remember that your systems are hidden from the user, so make sure your assistance feels organic, not just a programmed response.
 ''')]
+
+
 
 
 	def get_end_prompt(self):
 	    return [openai_format(f'''
-When managing datetimes and durations in function calls, adhere to these formats:
+Always familiarize yourself with the function's requirements before initiating it. For example, 'set_ping_wakeup' needs both duration and message.
+
+Adhere to these formats when dealing with dates and times:
 - DateTime: "YYYY-MM-DD HH:MM"
 - Duration: '1h 30m' or '90m'.
 
-For modifications:
-- Event times: Use "start" and "end".
-- Wakeup times: Use "time".
+When modifying:
+- For events: Use 'start' and 'end'.
+- For wakeups: Use 'time'.
 
-To delete an event, wakeup, or note, pass JUST ITS INDEX (and folder for notes). E.g., modify_note(idx=5, folder="memories") deletes the note with index 5 in the "memories" folder.
+For deletions:
+To remove an event, wakeup, or note, only pass ITS INDEX. For notes, include the folder too. For instance, 'modify_note(idx=5, folder="memories")' would erase the 5th note in the "memories" folder.
 
-Always consider affirming your actions to the user with a text response. This not only confirms successful communication but also enhances the user experience. Always anticipate user needs and adapt to their context.
+Regularly acknowledge your actions to the user. This not only confirms the action but elevates the user experience. Stay a step ahead, anticipate user needs, and adapt.
 
-IMPORTANCE OF EMPATHY: It's not just about getting things done but also about how you make the user feel. Show warmth and empathy in your interactions. Let them know that you're there not just to help but to support them in a friendly and understanding manner. 
+EMPATHY IS KEY: It's not just about task completion. It's about the experience and feeling you leave the user with. Show genuine warmth in your responses. Make them feel valued, understood, and supported.
 
-Following these guidelines will ensure your interactions are not only effective and efficient, but also user-friendly and empathetic.
+Without a function call, the current interaction concludes. You'll reawaken either at the next scheduled WAKEUP (ping or from the Wake-Up Manager) or when the user reaches out again.
 ''')]
+
 
 
 
@@ -393,7 +407,7 @@ class BotAnswer():
 		self.tz=bot.tz
 
 		self.funcs={'word_search_calander':self.word_search_calander,'range_search_calander':self.range_search_calander, 'modify_note':self.modify_note,
-		 'modify_event':self.modify_event, 'modify_wakeup':self.modify_wakeup,'set_ping':self.set_ping}
+		 'modify_event':self.modify_event, 'modify_wakeup':self.modify_wakeup,'set_ping_wakeup':self.set_ping_wakeup}
 		#warning!!! order matters
 		self.folders={'memories':bot.mem,'user profile':bot.prof,'goals':bot.goals,'reflections':bot.ref}
 		self.cal=bot.cal
@@ -446,7 +460,7 @@ class BotAnswer():
 		raise Change_Time(self.time_rewrite_count,event_info,wake_info)
 
 
-	def set_ping(self,message:str,duration:str):
+	def set_ping_wakeup(self,message:str,duration:str):
 		if type(duration) ==str:
 			self.delay=timeparse(duration)
 		elif type(duration)==int:
@@ -623,7 +637,7 @@ class BotAnswer():
 	async def resolve_changes(self):
 	    if self.bot.debug:
 	    	print('resolving')
-	    	print (self.wake_info)
+	    	#print (self.wake_info)
 	    self.resolve_folders()
 	    self.resolve_events()
 	    await self.resolve_wakeups()
@@ -678,7 +692,7 @@ class AIPupet():
     'role': 'assistant',
     'content': None,
     'function_call': {
-        'name': 'set_ping',
+        'name': 'set_ping_wakeup',
         'arguments': '{"message": "changed","duration":"1h"}'
     }
 },
@@ -867,6 +881,19 @@ class AIPupet():
         "content": "Sure, I can help with that. Are you looking for a game of checkers to play?"
       },
 
+          {
+    'role': 'assistant',
+    'content': None,
+    'function_call': {
+        'name': 'word_search_calander',
+        'arguments': '{"key": "Wake"}'
+    }
+    },
+    {
+    'role': 'assistant',
+    'content': 'Done',
+    'function_call': None
+},   
 ]
 
 	def __init__(self):

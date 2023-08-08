@@ -14,7 +14,7 @@ from ai_tools import gpt_response,RateLimitedAPICall,LogAPICall,extract_message
 from calander import WakeupManager,s_in_d
 #remember to overwrite the wakeup WakeupHook 
 
-
+#DEBUG=False
 class WakeupHook():
 	def __init__(self,user_id,tel_bot):
 		self.user_id=user_id
@@ -31,6 +31,7 @@ def ai_bot_from_id(user_id,tel_bot):
 	manager=Ai_Conversation_Manager.from_id(user_id,tel_bot)
 	path=join('users',str(user_id),'bot_data') 
 	bot=Bot(path)
+	bot.debug=True
 	bot.send_message=manager.send_message
 	bot.wakeup.WakeupHook=WakeupHook(user_id,tel_bot)
 	return bot
